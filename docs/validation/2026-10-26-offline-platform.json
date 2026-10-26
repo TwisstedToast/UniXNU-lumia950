@@ -1,0 +1,113 @@
+{
+  "date": "2026-10-26",
+  "kind": "offline-platform-validation",
+  "target": "Microsoft Lumia 950 / MSM8992 / iOS 16.7.16",
+  "phone_accessed_or_written": false,
+  "staged_gpu_preflight_replaced": false,
+  "first_boot_arguments": [
+    "-v",
+    "cpus=1"
+  ],
+  "host_tests": [
+    {
+      "suite": "SDHCI decoding",
+      "checks": 47,
+      "result": "passed",
+      "environment": "ASan/UBSan host"
+    },
+    {
+      "suite": "SDHCI polled transport",
+      "checks": 368,
+      "result": "passed",
+      "environment": "ASan/UBSan simulated MMIO"
+    },
+    {
+      "suite": "GICv2 core",
+      "checks": 168,
+      "result": "passed",
+      "environment": "ASan/UBSan simulated MMIO"
+    },
+    {
+      "suite": "ArmCpu source preparation",
+      "tests": 6,
+      "result": "passed",
+      "environment": "desktop file/patch tests"
+    }
+  ],
+  "qemu": {
+    "version": "10.2.0",
+    "cpu": "cortex-a53",
+    "exception_level": 1,
+    "cpu_interfaces": 2,
+    "executing_cpus": 1,
+    "positive_cases": [
+      "GICv2 security extensions off",
+      "GICv2 security extensions on, non-secure EL1"
+    ],
+    "asynchronous_interrupts_per_positive_case": {
+      "virtual_timer_ppi_27": 2,
+      "sgi_0": 2,
+      "software_pended_spi_40": 2
+    },
+    "negative_cases": [
+      "secure-owned SPI 41 refused",
+      "secure-owned inaccessible PMR refused"
+    ],
+    "result": "passed",
+    "xnu_boot": false,
+    "handset_result": false
+  },
+  "other_regressions": [
+    "GPU core/backend/firmware tests",
+    "UEFI probe and framebuffer host tests",
+    "MDSS core",
+    "GPU addon validation",
+    "ADT generation and 14 negative mutants",
+    "payload config",
+    "single-tree and split-tree kernel staging",
+    "first-boot cpus=1 staging",
+    "Python compilation",
+    "workflow YAML and 29 shell blocks",
+    "Clang static analysis of new portable cores",
+    "freestanding AArch64 core compilation",
+    "git diff --check"
+  ],
+  "armcpu_source": {
+    "repository": "https://github.com/UniXNU/ArmCpu",
+    "revision": "9066b53bbc82e92a98ec44a11dd50fd13eaf1a1b",
+    "source_sha256": "3c87b3bd617be5582a6a24ff797c359497ee9feaa702ee883ecee4270db21c9f",
+    "patch_sha256": "ac5aeb6531fe833fe8ecb34a0d943ac8e582eed0aee98e2280d6b0999cb36ac2",
+    "generated_sha256": "6c0a3c94872e8070669d6f3a53a42fbfdb065aa16cd4d9644c1caa49ce5c3a9d",
+    "implementation_sha256": {
+      "GicV2Core.h": "365fef480888fa42e4c01424838465102451e1e4008ceda5f453f0633d2a9453",
+      "GicV2Core.cpp": "928c8fe5635e242c670e28c0b0dd95d1b62cbbfea8cdce4e076f58982f54491b"
+    },
+    "xnu_abi_compile_verified": false,
+    "hardware_verified": false
+  },
+  "xnu_iokit_compile_verified": false,
+  "new_kernel_artifact_produced": false,
+  "compile_blocker": "No configured iPhoneOS SDK or recorded XNU compile recipe on this Mac; changes have not been pushed to CI.",
+  "remaining": [
+    "XNU/IOKit compile and kernel link",
+    "Lumia GIC timer/self-IPI/peripheral validation",
+    "Lumia storage controller and GPT read qualification",
+    "root/Data volume assembly and persistence",
+    "iOS framebuffer/userland/Metal integration"
+  ],
+  "sha256": {
+    "drivers/NativeGicV2/GicV2Core.cpp": "928c8fe5635e242c670e28c0b0dd95d1b62cbbfea8cdce4e076f58982f54491b",
+    "drivers/NativeGicV2/GicV2Core.h": "365fef480888fa42e4c01424838465102451e1e4008ceda5f453f0633d2a9453",
+    "drivers/NativeGicV2/ArmCpu.patch": "ac5aeb6531fe833fe8ecb34a0d943ac8e582eed0aee98e2280d6b0999cb36ac2",
+    "drivers/NativeSdhci/PollingHost.cpp": "07b2be7ff7baee16bc3e3ee5de1dcceb64b7675dcd42382ad84500971248eb02",
+    "drivers/NativeSdhci/PollingHost.h": "f4f491e43ad36234c60df83d182b41a5bc3a820e9aa1a2d8d4c5facbf8eaa484",
+    "drivers/NativeSdhci/SdhciCore.cpp": "4fdbe18ab554144489003583cdac44538c8607095c19fb7274d5a140c8ddd38e",
+    "drivers/NativeSdhci/NativeSdhci.cpp": "9d9449712e4c68ad71b8b8c3371cf11e6fe0ccd54799896199573ea1fa4bf4d2",
+    "out/gicv2-validation/gicv2-test.elf": "7bf436e760a97f535fbb5d51dbde4e4c0f28944a2fcd8a1d1d205557303ad958",
+    "out/gicv2-validation/gicv2-test-blocked-pmr.elf": "ab78573216804b47e7f589fdf1454cb991ec3cd54a9669e2973ca934eb73030b"
+  },
+  "logs": [
+    "out/offline-validation",
+    "out/gicv2-validation"
+  ]
+}

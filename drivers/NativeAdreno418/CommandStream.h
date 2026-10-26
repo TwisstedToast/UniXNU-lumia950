@@ -2,9 +2,7 @@
 //
 // The command processor's stream (rungs 4 and 5, core only).
 //
-// The a4xx CP takes PM4 **type 3** packets: a 32-bit header whose top two bits
-// are 0b11, a 14-bit count of the words that follow, and an 8-bit opcode. The
-// numbers and the packet shapes below are the ones Linux's msm driver writes for
+// The numbers and the packet shapes below are the ones Linux's msm driver writes for
 // this exact GPU (v5.15, drivers/gpu/drm/msm/adreno/a4xx_gpu.c) over the
 // generated table in adreno_pm4.xml.h:
 //
@@ -35,11 +33,13 @@ namespace pm4 {
 
 constexpr u32 kType3 = 0xc0000000u;
 constexpr u32 kCountShift = 16;
-constexpr u32 kMaxPayloadDwords = 0x3fffu;   // the count field is 14 bits
+constexpr u32 kMaxPayloadDwords = 0x4000u;
 
 constexpr u32 kOpNop = 16;
 constexpr u32 kOpWaitForIdle = 38;
 constexpr u32 kOpEventWrite = 70;
+constexpr u32 kOpMemWrite = 61;
+constexpr u32 kOpMeInit = 72;
 
 constexpr u32 kEventCacheFlushTs = 4;
 constexpr u32 kEventCacheFlush = 6;
@@ -67,6 +67,10 @@ u32 writeFence(u32 *out, u32 capacity, u32 address, u32 value, bool interrupt);
 u32 writeSubmissionTail(u32 *out, u32 capacity, u32 fenceAddress, u32 fenceValue,
                         bool interrupt);
 
+u32 writeMemoryFill(u32 *out, u32 capacity, u32 address, u32 value, u32 dwords);
+u32 writeMeInit(u32 *out, u32 capacity);
+u32 ringControl(u32 ringBytes);
+
 // Ring pacing. Both pointers are dword indices into a ring of `ringDwords`; the
 // write pointer moves by whole packets, and a submission that does not fit is
 // refused rather than wrapped over work the CP has not read.
@@ -79,10 +83,7 @@ u32 ringWritePointerAfter(u32 writePointer, u32 submissionDwords, u32 ringDwords
 // A ring is not enough to submit work: the a4xx CP runs microcode, and Linux's
 // a4xx_gpu.c loads two blobs into it before it programs a ring — PM4 into
 // CP_ME_RAM and the PFP into CP_PFP_UCODE — then writes CP_ME_CNTL = 0 to clear
-// ME_HALT and start it. Word 0 of each blob is a version, and the words after it
-// are the image. This repository carries no Adreno firmware, so the honest thing
-// to have here is the plan for loading it, validated, and not the ring that
-// would need it.
+// ME_HALT and start it.
 // ---------------------------------------------------------------------------
 
 enum class CpUcode {
@@ -100,14 +101,11 @@ UcodeTarget ucodeTarget(CpUcode which);
 struct UcodePlan {
     u32 addressIndex;
     u32 dataIndex;
-    const u32 *data;   // the image after its version word
+    const u32 *data;
     u32 dataWords;
-    u32 version;       // word 0 of the blob, as the driver logs it
+    u32 version;
 };
 
-// Accepts a blob of whole 32-bit words and fills in the plan. A blob with no
-// version word, with nothing after it, or whose version reads all ones (a dead
-// window, not a version) is refused.
 bool planUcodeLoad(const u32 *blob, u32 blobWords, CpUcode which, UcodePlan *plan);
 
 // Register writes the plan costs: one address, then one per image word.

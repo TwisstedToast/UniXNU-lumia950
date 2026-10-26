@@ -26,11 +26,13 @@ COMPONENTS = {
         "out": "armdt-platform",
     },
     "ArmCpu": {
-        "sources": ["drivers/ArmCpu/ArmCpu.cpp"],
+        "sources": ["drivers/ArmCpu/ArmCpu.cpp", "drivers/NativeGicV2/GicV2Core.cpp"],
         "out": "armcpu",
+        "include": ["drivers/NativeGicV2"],
     },
     "NativeSdhci": {
-        "sources": ["drivers/NativeSdhci/NativeSdhci.cpp", "drivers/NativeSdhci/SdhciCore.cpp"],
+        "sources": ["drivers/NativeSdhci/NativeSdhci.cpp", "drivers/NativeSdhci/SdhciCore.cpp",
+                    "drivers/NativeSdhci/PollingHost.cpp"],
         "out": "native-sdhci",
         # The storage ABI headers are prepared from IOStorageFamily by the kernel step;
         # osfmk is where the recorded recipe resolves <mach/...> from.
@@ -45,7 +47,14 @@ COMPONENTS = {
         "sources": ["drivers/NativeAdreno418/NativeAdreno418.cpp",
                     "drivers/NativeAdreno418/AdrenoCore.cpp",
                     "drivers/NativeAdreno418/IommuCore.cpp",
-                    "drivers/NativeAdreno418/CommandStream.cpp"],
+                    "drivers/NativeAdreno418/CommandStream.cpp",
+                    "drivers/NativeAdreno418/GpuIo.cpp",
+                    "drivers/NativeAdreno418/LpaeCore.cpp",
+                    "drivers/NativeAdreno418/SmmuContext.cpp",
+                    "drivers/NativeAdreno418/Submission.cpp",
+                    "drivers/NativeAdreno418/RpmCore.cpp",
+                    "drivers/NativeAdreno418/SmdPipe.cpp",
+                    "drivers/NativeAdreno418/PlatformCheck.cpp"],
         "out": "native-adreno418",
         "include": ["drivers/NativeAdreno418"],
     },
@@ -128,8 +137,8 @@ def main():
     spec = COMPONENTS[args.component]
     if not RECIPE.is_file():
         raise SystemExit(
-            f"No compile record at {RECIPE}. The kernel step must run first, and it needs a "
-            "macOS host: the XNU build is not supported on this machine."
+            f"No compile record at {RECIPE}. Prepare the XNU build with Xcode and the "
+            "iPhoneOS SDK first; freestanding core builds do not provide the IOKit ABI recipe."
         )
 
     record = json.loads(RECIPE.read_text().strip().rstrip(","))
@@ -142,6 +151,11 @@ def main():
         source = ROOT / source_name
         if not source.is_file():
             raise SystemExit(f"{source} is missing: is the module linked into the build tree?")
+        if args.component == "ArmCpu" and source.name == "ArmCpu.cpp":
+            generated = output / "generated/ArmCpu.cpp"
+            subprocess.run([sys.executable, str(ROOT / "scripts/prepare-armcpu.py"),
+                            str(source), str(generated)], check=True)
+            source = generated
         destination = output / (source.stem + ".o")
         command = build_command(record, source, destination, include_dirs)
         subprocess.run(command, cwd=record["directory"], check=True)

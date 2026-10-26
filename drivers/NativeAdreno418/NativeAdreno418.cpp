@@ -10,14 +10,6 @@
 // all, because an AHB access to a powered-down block is how a bring-up hangs the
 // interconnect instead of reporting a failure.
 //
-// What it does not do yet, in the order the ladder adds it (AdrenoCore.h):
-//   * rung 2, power: the GDSC sequence is wired here, but the RPM resource vote
-//     and the OxiLi clock enables that make it take effect are not
-//   * rung 3, smmu: the 4 KiB page tables the GPU dereferences buffers through
-//   * rung 4, ring: CP_RB_* and a submission ring with fences
-//   * rung 5, blit: PM4 that clears or copies, verified by a fence
-//   * rung 6, metal: the Metal plugin over Metal, metal2vulkan, Turnip and IR3
-//
 // It publishes no GPU service. Nothing that looks for a Metal device may find
 // this one: a client that binds a half driver is worse than a client that finds
 // none and renders on the CPU.
@@ -82,69 +74,20 @@ bool NativeAdreno418::mapWindows(IOService *provider)
 uint32_t NativeAdreno418::readMmss(uint32_t offset) const
 {
     if (!mmss) { return 0; }
-    uint32_t value = 0;
-    memcpy(&value, const_cast<uint8_t *>(mmss) + offset, sizeof value);
+    if ((offset & 3) || offset > lumia950::kMmssSize - 4) { return 0xffffffffu; }
+    asm volatile("dsb sy" ::: "memory");
+    const uint32_t value = *reinterpret_cast<volatile uint32_t *>(mmss + offset);
+    asm volatile("dsb sy" ::: "memory");
     return value;
-}
-
-void NativeAdreno418::writeMmss(uint32_t offset, uint32_t value)
-{
-    if (!mmss) { return; }
-    memcpy(const_cast<uint8_t *>(mmss) + offset, &value, sizeof value);
-}
-
-// The GDSC sequence from drivers/clk/qcom/gdsc.c: refuse under hardware control,
-// clear SW_COLLAPSE, then poll PWR_ON a bounded number of times. What is missing
-// is everything that makes the write take effect on this SoC — the RPM vote and
-// the OxiLi clock enable — so a domain that does not come up here is a rung-2
-// gap being reported, not a bug to paper over.
-bool NativeAdreno418::powerDomainUp(uint32_t gdscrOffset, uint32_t *gdscr, const char *name)
-{
-    uint32_t current = readMmss(gdscrOffset);
-    if (decodeGdscr(current) == PowerState::On) {
-        *gdscr = current;
-        return true;
-    }
-    if (gdscrUnderHardwareControl(current)) {
-        IOLog("NativeAdreno418: %s is collapsed and under hardware control (0x%08x); the "
-              "power controller owns it, so software must not write SW_COLLAPSE\n",
-              name, current);
-        *gdscr = current;
-        return false;
-    }
-
-    IOLog("NativeAdreno418: %s is collapsed (0x%08x); clearing SW_COLLAPSE and polling "
-          "PWR_ON, which is rung 2's GDSC half without the RPM vote or the clocks\n",
-          name, current);
-    writeMmss(gdscrOffset, gdscrEnableValue(current));
-
-    GdscPoller poller = {};
-    gdscPollBegin(&poller);
-    GdscPoll result = GdscPoll::Waiting;
-    for (uint32_t attempt = 0; attempt < kGdscrMaxPolls; attempt++) {
-        current = readMmss(gdscrOffset);
-        result = gdscPollUntilOn(&poller, current);
-        if (result != GdscPoll::Waiting) { break; }
-    }
-
-    *gdscr = current;
-    native_adreno418_power_polls = poller.polls;
-    if (result != GdscPoll::PoweredOn) {
-        IOLog("NativeAdreno418: %s did not power on after %u reads (0x%08x); the missing "
-              "pieces are the RPM resource vote and the OxiLi clocks, both rung 2\n",
-              name, poller.polls, current);
-        return false;
-    }
-    IOLog("NativeAdreno418: %s powered on after %u reads (0x%08x)\n",
-          name, poller.polls, current);
-    return true;
 }
 
 uint32_t NativeAdreno418::readGpu(uint32_t dwordIndex) const
 {
     if (!gpu) { return 0xffffffffu; }
-    uint32_t value = 0;
-    memcpy(&value, const_cast<uint8_t *>(gpu) + byteOffset(dwordIndex), sizeof value);
+    if (dwordIndex >= lumia950::kGpuSize / 4) { return 0xffffffffu; }
+    asm volatile("dsb sy" ::: "memory");
+    const uint32_t value = *reinterpret_cast<volatile uint32_t *>(gpu + byteOffset(dwordIndex));
+    asm volatile("dsb sy" ::: "memory");
     return value;
 }
 
@@ -152,44 +95,39 @@ uint32_t NativeAdreno418::readGpu(uint32_t dwordIndex) const
 // Rung 1: identity
 // ---------------------------------------------------------------------------
 
+bool NativeAdreno418::snapshotRead(void *context, RegisterSpace space, u32 offset, u32 *value)
+{
+    if (!context || !value || (offset & 3)) { return false; }
+    NativeAdreno418 *driver = static_cast<NativeAdreno418 *>(context);
+    if (space == RegisterSpace::Mmss && offset <= lumia950::kMmssSize - 4) {
+        *value = driver->readMmss(offset);
+        return true;
+    }
+    if (space == RegisterSpace::Gpu && offset <= lumia950::kGpuSize - 4) {
+        *value = driver->readGpu(offset / 4);
+        return true;
+    }
+    return false;
+}
+
 bool NativeAdreno418::identify()
 {
-    // Rung 2's GDSC half: bring each domain up if the firmware left it down. The
-    // reads below are only safe once both report PWR_ON, so this comes first.
-    // A domain that stays down is not fatal here: the logs below say which one,
-    // and the checks that follow refuse to read the block.
-    powerDomainUp(lumia950::kGdscrGxOffset, &gdscrGx, "gx");
-    powerDomainUp(lumia950::kGdscrCxOffset, &gdscrCx, "cx");
+    const RegisterIo io = {this, snapshotRead, nullptr, nullptr, nullptr};
+    GpuSnapshot snapshot = {};
+    const ProbeResult result = readSnapshot(io, &snapshot);
+    gdscrGx = snapshot.power.gx;
+    gdscrCx = snapshot.power.cx;
     native_adreno418_gdscr_gx = gdscrGx;
     native_adreno418_gdscr_cx = gdscrCx;
 
-    const PowerState gx = decodeGdscr(gdscrGx);
-    const PowerState cx = decodeGdscr(gdscrCx);
-    IOLog("NativeAdreno418: GDSCR gx 0x%08x (%s), cx 0x%08x (%s)\n",
-          gdscrGx, gx == PowerState::On ? "on" : "collapsed",
-          gdscrCx, cx == PowerState::On ? "on" : "collapsed");
-
-    if (gx != PowerState::On) {
-        IOLog("NativeAdreno418: the graphics domain is collapsed, so the block is not "
-              "read: an AHB access to a powered-down GPU can hang the interconnect rather "
-              "than fail. Rung 2 (RPM vote, GDSC and OxiLi clocks) has not run; nothing "
-              "below it can start from a cold domain.\n");
-        return false;
-    }
-    if (cx != PowerState::On) {
-        IOLog("NativeAdreno418: gx is on but the cx rail is not; an a4xx needs both, so "
-              "no register in the block is read\n");
-        return false;
-    }
-    if (gdscrCollapseRequested(gdscrGx) || gdscrCollapseRequested(gdscrCx)) {
-        IOLog("NativeAdreno418: a GDSC has a collapse request pending (gx 0x%08x, cx 0x%08x); "
-              "the domain is mid-transition and is not read\n", gdscrGx, gdscrCx);
-        return false;
-    }
-
-    const uint32_t hwVersion = readGpu(lumia950::kRegRbbmHwVersion);
-    const uint32_t hwConfiguration = readGpu(lumia950::kRegRbbmHwConfiguration);
-    const uint32_t status = readGpu(lumia950::kRegRbbmStatus);
+    IOLog("NativeAdreno418: %s; GX 0x%08x CX 0x%08x clocks core/AHB/timer "
+          "0x%08x/0x%08x/0x%08x; no power or clock writes\n", probeResultName(result),
+          gdscrGx, gdscrCx, snapshot.power.coreClock, snapshot.power.ahbClock,
+          snapshot.power.timerClock);
+    if (result != ProbeResult::Ready) { return false; }
+    const uint32_t hwVersion = snapshot.version;
+    const uint32_t hwConfiguration = snapshot.configuration;
+    const uint32_t status = snapshot.status;
     native_adreno418_hw_version = hwVersion;
 
     if (classifyWindowRead(hwVersion) == WindowAnswer::NoResponse) {
@@ -220,14 +158,11 @@ bool NativeAdreno418::identify()
               "the revision this driver expects, and no revision is claimed from it\n");
     }
 
-    // The firmware's own handoff, logged rather than interpreted: the CP is part
-    // of the power domain that is already up, so these reads are safe, and a CP
-    // that is still running is a fact the ring rung has to account for.
-    const uint32_t rbBase  = readGpu(lumia950::kRegCpRbBase);
-    const uint32_t rbCntl  = readGpu(lumia950::kRegCpRbCntl);
-    const uint32_t rbRptr  = readGpu(lumia950::kRegCpRbRptr);
-    const uint32_t rbWptr  = readGpu(lumia950::kRegCpRbWptr);
-    const uint32_t meCntl  = readGpu(lumia950::kRegCpMeCntl);
+    const uint32_t rbBase  = snapshot.ringBase;
+    const uint32_t rbCntl  = snapshot.ringControl;
+    const uint32_t rbRptr  = snapshot.readPointer;
+    const uint32_t rbWptr  = snapshot.writePointer;
+    const uint32_t meCntl  = snapshot.meControl;
     IOLog("NativeAdreno418: CP left by the firmware: RB_BASE 0x%08x RB_CNTL 0x%08x "
           "RB_RPTR 0x%08x RB_WPTR 0x%08x ME_CNTL 0x%08x\n",
           rbBase, rbCntl, rbRptr, rbWptr, meCntl);
@@ -256,9 +191,8 @@ bool NativeAdreno418::start(IOService *provider)
     }
 
     IOLog("NativeAdreno418: rung 1 of %u (%s) is the furthest this build has: "
-          "power, smmu, ring, blit and metal are not written. No GPU service is "
-          "published, so a client that finds no Metal device renders on the CPU "
-          "instead of binding half a driver.\n",
+          "the SMMU and CP backend is not activated; cold power and Metal remain "
+          "unimplemented. No GPU service is published.\n",
           static_cast<unsigned>(Rung::Metal), rungName(kWrittenRung));
     return true;
 }

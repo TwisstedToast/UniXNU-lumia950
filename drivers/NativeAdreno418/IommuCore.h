@@ -3,10 +3,7 @@
 // The GPU's IOMMU page tables (rung 3, core only).
 //
 // MSM8992's graphics SMMU is a Qualcomm SMMU v1 (`qcom,msm-smmu-v1`,
-// `qcom,iommu@fdb10000` in msm-iommu-v1.dtsi). Mainline drives it through
-// io-pgtable in the ARMv7 short-descriptor format, as arm-v7s: 4096
-// first-level entries covering 1 MiB each, 256 second-level entries covering
-// 4 KiB each, 32-bit output addresses.
+// `qcom,iommu@fdb10000` in msm-iommu-v1.dtsi).
 //
 // The descriptor bit layout below is not recalled from the ARM ARM; it is the
 // one drivers/iommu/io-pgtable-arm-v7s.c writes, mirrored field for field:

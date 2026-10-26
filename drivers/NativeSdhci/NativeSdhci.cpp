@@ -31,14 +31,6 @@ using namespace sdhci;
 
 OSDefineMetaClassAndStructors(NativeSdhci, IOBlockStorageDevice)
 
-namespace {
-
-constexpr uint32_t kCommandTimeoutUs  = 100000;
-constexpr uint32_t kTransferTimeoutUs = 500000;
-constexpr uint32_t kPollStepUs        = 10;
-
-} // namespace
-
 // Published for the bring-up log and the kernel symbol table, in the style of
 // the other native drivers: a boot with no serial console still shows whether
 // the driver started, how many blocks it moved and where it gave up.
@@ -49,6 +41,9 @@ volatile uint32_t native_sdhci_rca    = 0;
 volatile uint64_t native_sdhci_bytes  = 0;
 volatile uint64_t native_sdhci_reads  = 0;
 volatile uint64_t native_sdhci_errors = 0;
+volatile uint32_t native_sdhci_error_phase = 0;
+volatile uint32_t native_sdhci_interrupt_status = 0;
+volatile uint32_t native_sdhci_card_status = 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -57,46 +52,92 @@ volatile uint64_t native_sdhci_errors = 0;
 
 uint8_t NativeSdhci::readHc8(uint32_t offset) const
 {
-    return hc ? hc[offset] : 0;
+    if (!hc || offset >= lumia950::kSdhciHcSize) return 0xff;
+    asm volatile("dsb sy" ::: "memory");
+    const uint8_t value = hc[offset];
+    asm volatile("dsb sy" ::: "memory");
+    return value;
 }
 
 uint16_t NativeSdhci::readHc16(uint32_t offset) const
 {
-    if (!hc) return 0;
-    uint16_t value = 0;
-    memcpy(&value, const_cast<uint8_t *>(hc) + offset, sizeof value);
+    if (!hc || (offset & 1) || offset > lumia950::kSdhciHcSize - 2) return 0xffff;
+    asm volatile("dsb sy" ::: "memory");
+    const uint16_t value = *reinterpret_cast<volatile uint16_t *>(hc + offset);
+    asm volatile("dsb sy" ::: "memory");
     return value;
 }
 
 uint32_t NativeSdhci::readHc32(uint32_t offset) const
 {
-    if (!hc) return 0;
-    uint32_t value = 0;
-    memcpy(&value, const_cast<uint8_t *>(hc) + offset, sizeof value);
+    if (!hc || (offset & 3) || offset > lumia950::kSdhciHcSize - 4) return 0xffffffffu;
+    asm volatile("dsb sy" ::: "memory");
+    const uint32_t value = *reinterpret_cast<volatile uint32_t *>(hc + offset);
+    asm volatile("dsb sy" ::: "memory");
     return value;
 }
 
 void NativeSdhci::writeHc8(uint32_t offset, uint8_t value)
 {
-    if (hc) hc[offset] = value;
+    if (!hc || offset >= lumia950::kSdhciHcSize) return;
+    asm volatile("dsb sy" ::: "memory");
+    hc[offset] = value;
+    asm volatile("dsb sy" ::: "memory");
 }
 
 void NativeSdhci::writeHc16(uint32_t offset, uint16_t value)
 {
-    if (hc) memcpy(const_cast<uint8_t *>(hc) + offset, &value, sizeof value);
+    if (!hc || (offset & 1) || offset > lumia950::kSdhciHcSize - 2) return;
+    asm volatile("dsb sy" ::: "memory");
+    *reinterpret_cast<volatile uint16_t *>(hc + offset) = value;
+    asm volatile("dsb sy" ::: "memory");
 }
 
 void NativeSdhci::writeHc32(uint32_t offset, uint32_t value)
 {
-    if (hc) memcpy(const_cast<uint8_t *>(hc) + offset, &value, sizeof value);
+    if (!hc || (offset & 3) || offset > lumia950::kSdhciHcSize - 4) return;
+    asm volatile("dsb sy" ::: "memory");
+    *reinterpret_cast<volatile uint32_t *>(hc + offset) = value;
+    asm volatile("dsb sy" ::: "memory");
 }
 
 uint32_t NativeSdhci::readCore32(uint32_t offset) const
 {
-    if (!core) return 0;
-    uint32_t value = 0;
-    memcpy(&value, const_cast<uint8_t *>(core) + offset, sizeof value);
+    if (!core || (offset & 3) || offset > lumia950::kSdhciCoreSize - 4) return 0xffffffffu;
+    asm volatile("dsb sy" ::: "memory");
+    const uint32_t value = *reinterpret_cast<volatile uint32_t *>(core + offset);
+    asm volatile("dsb sy" ::: "memory");
     return value;
+}
+
+u8 NativeSdhci::ioRead8(void *context, u32 offset)
+{
+    return static_cast<NativeSdhci *>(context)->readHc8(offset);
+}
+
+u32 NativeSdhci::ioRead32(void *context, u32 offset)
+{
+    return static_cast<NativeSdhci *>(context)->readHc32(offset);
+}
+
+void NativeSdhci::ioWrite8(void *context, u32 offset, u8 value)
+{
+    static_cast<NativeSdhci *>(context)->writeHc8(offset, value);
+}
+
+void NativeSdhci::ioWrite16(void *context, u32 offset, u16 value)
+{
+    static_cast<NativeSdhci *>(context)->writeHc16(offset, value);
+}
+
+void NativeSdhci::ioWrite32(void *context, u32 offset, u32 value)
+{
+    static_cast<NativeSdhci *>(context)->writeHc32(offset, value);
+}
+
+void NativeSdhci::ioDelay(void *, u32 microseconds)
+{
+    IODelay(microseconds);
 }
 
 // ---------------------------------------------------------------------------
@@ -107,8 +148,8 @@ bool NativeSdhci::mapWindows(IOService *provider)
 {
     // IOPlatformDevice publishes the ADT node's reg entries as device memory,
     // in order: 0 is the SDHCI window, 1 the Qualcomm core window.
-    hcMap = provider->mapDeviceMemoryWithIndex(0, 0);
-    coreMap = provider->mapDeviceMemoryWithIndex(1, 0);
+    hcMap = provider->mapDeviceMemoryWithIndex(0, kIOMapInhibitCache);
+    coreMap = provider->mapDeviceMemoryWithIndex(1, kIOMapInhibitCache);
     if (!hcMap || !coreMap) {
         IOLog("NativeSdhci: provider has no reg windows (hc %p core %p); "
               "the ADT node needs both reg entries\n", hcMap, coreMap);
@@ -117,6 +158,11 @@ bool NativeSdhci::mapWindows(IOService *provider)
     if (hcMap->getLength() < lumia950::kSdhciHcSize) {
         IOLog("NativeSdhci: hc window is %llu bytes, expected at least 0x%x\n",
               static_cast<unsigned long long>(hcMap->getLength()), lumia950::kSdhciHcSize);
+        return false;
+    }
+
+    if (coreMap->getLength() < lumia950::kSdhciCoreSize) {
+        IOLog("NativeSdhci: core window is too short\n");
         return false;
     }
 
@@ -148,244 +194,57 @@ void NativeSdhci::logHost()
           readCore32(0x00));
 }
 
-void NativeSdhci::resetCommandLine()
+void NativeSdhci::logFailure()
 {
-    // Reset only the command and data state machines. A full reset would clear
-    // the clock and power the firmware configured, which is the one thing this
-    // warm handoff relies on.
-    writeHc8(kRegSoftwareReset, kResetCommand | kResetData);
-    for (uint32_t waited = 0; waited < kCommandTimeoutUs; waited += kPollStepUs) {
-        if (!(readHc8(kRegSoftwareReset) & (kResetCommand | kResetData))) return;
-        IODelay(kPollStepUs);
-    }
-    IOLog("NativeSdhci: command reset did not complete\n");
-}
-
-// ---------------------------------------------------------------------------
-// Command path
-// ---------------------------------------------------------------------------
-
-bool NativeSdhci::waitPresent(uint32_t mask, uint32_t value, uint32_t timeoutUs)
-{
-    for (uint32_t waited = 0; waited < timeoutUs; waited += kPollStepUs) {
-        if ((readHc32(kRegPresentState) & mask) == value) return true;
-        IODelay(kPollStepUs);
-    }
-    return false;
-}
-
-void NativeSdhci::clearInterrupts()
-{
-    writeHc32(kRegInterruptStatus, 0xFFFFFFFF);
-}
-
-bool NativeSdhci::sendCommand(uint8_t index, uint32_t argument, uint16_t flags, uint32_t response[4])
-{
-    if (!waitPresent(kPresentCmdInhibit | kPresentDataInhibit, 0, kCommandTimeoutUs)) {
-        IOLog("NativeSdhci: command %u: host stayed inhibited\n", index);
-        __atomic_fetch_add(&native_sdhci_errors, 1, __ATOMIC_RELAXED);
-        return false;
-    }
-
-    clearInterrupts();
-    writeHc32(kRegArgument, argument);
-    writeHc16(kRegCommand, static_cast<uint16_t>((index << 8) | flags));
-
-    uint32_t status = 0;
-    bool complete = false;
-    for (uint32_t waited = 0; waited < kCommandTimeoutUs; waited += kPollStepUs) {
-        status = readHc32(kRegInterruptStatus);
-        if (status & kIntError) {
-            IOLog("NativeSdhci: command %u failed, status 0x%08x\n", index, status);
-            __atomic_fetch_add(&native_sdhci_errors, 1, __ATOMIC_RELAXED);
-            return false;
-        }
-        if (status & kIntCommandComplete) {
-            complete = true;
-            break;
-        }
-        IODelay(kPollStepUs);
-    }
-
-    if (!complete) {
-        IOLog("NativeSdhci: command %u timed out, status 0x%08x\n", index, status);
-        __atomic_fetch_add(&native_sdhci_errors, 1, __ATOMIC_RELAXED);
-        return false;
-    }
-
-    if (response) {
-        for (uint32_t word = 0; word < 4; ++word) {
-            response[word] = readHc32(kRegResponse + word * 4);
-        }
-    }
-    return true;
+    const HostResult &failure = host.result();
+    native_sdhci_error_phase = static_cast<uint32_t>(failure.phase);
+    native_sdhci_interrupt_status = failure.interruptStatus;
+    native_sdhci_card_status = failure.cardStatus;
+    __atomic_fetch_add(&native_sdhci_errors, 1, __ATOMIC_RELAXED);
+    IOLog("NativeSdhci: %s, CMD%u, phase %u, interrupt 0x%08x, card 0x%08x, attach %u\n",
+          hostErrorName(failure.error), failure.command, static_cast<unsigned>(failure.phase),
+          failure.interruptStatus, failure.cardStatus, static_cast<unsigned>(card.error()));
 }
 
 bool NativeSdhci::readBlockPio(uint64_t lba, void *bytes)
 {
-    if (!bytes) return false;
-
-    writeHc16(kRegBlockSize, static_cast<uint16_t>(lumia950::kLogicalBlockBytes));
-    writeHc16(kRegBlockCount, 1);
-    writeHc32(kRegArgument, static_cast<uint32_t>(lba));
-    writeHc16(kRegTransferMode, kModeBlockCountEnable | kModeDirectionRead);
-
-    uint32_t response[4] = {};
-    if (!sendCommand(kCmd17ReadSingleBlock, static_cast<uint32_t>(lba),
-                     kCmdDataPresent | kCmdResponse48 | kCmdCrcCheck | kCmdIndexCheck, response)) {
-        return false;
-    }
-
-    uint32_t *words = reinterpret_cast<uint32_t *>(bytes);
-    for (uint32_t word = 0; word < lumia950::kLogicalBlockBytes / 4; ++word) {
-        if (!waitPresent(kPresentBufferRead, kPresentBufferRead, kTransferTimeoutUs)) {
-            IOLog("NativeSdhci: LBA %llu stalled before word %u\n",
-                  static_cast<unsigned long long>(lba), word);
-            __atomic_fetch_add(&native_sdhci_errors, 1, __ATOMIC_RELAXED);
-            return false;
-        }
-        words[word] = readHc32(kRegBufferPort);
-    }
-
-    const uint32_t status = readHc32(kRegInterruptStatus);
-    if (!(status & kIntTransferComplete)) {
-        IOLog("NativeSdhci: LBA %llu ended without transfer complete, status 0x%08x\n",
-              static_cast<unsigned long long>(lba), status);
-        __atomic_fetch_add(&native_sdhci_errors, 1, __ATOMIC_RELAXED);
-        return false;
-    }
-    clearInterrupts();
-    return true;
-}
-
-// ---------------------------------------------------------------------------
-// Card identification
-// ---------------------------------------------------------------------------
-
-bool NativeSdhci::readCsd(uint16_t rca, uint32_t csd[4])
-{
-    return sendCommand(kCmd9SendCsd, static_cast<uint32_t>(rca) << 16,
-                       kCmdResponse136 | kCmdCrcCheck | kCmdIndexCheck, csd);
-}
-
-bool NativeSdhci::readExtCsd(uint32_t extCsd[128])
-{
-    if (!extCsd) return false;
-
-    writeHc16(kRegBlockSize, static_cast<uint16_t>(lumia950::kLogicalBlockBytes));
-    writeHc16(kRegBlockCount, 1);
-    writeHc32(kRegArgument, 0);
-    writeHc16(kRegTransferMode, kModeBlockCountEnable | kModeDirectionRead);
-
-    uint32_t response[4] = {};
-    if (!sendCommand(kCmd8SendExtCsd, 0, kCmdDataPresent | kCmdResponse48 | kCmdCrcCheck | kCmdIndexCheck,
-                     response)) {
-        return false;
-    }
-    for (uint32_t word = 0; word < 128; ++word) {
-        if (!waitPresent(kPresentBufferRead, kPresentBufferRead, kTransferTimeoutUs)) {
-            IOLog("NativeSdhci: EXT_CSD stalled before word %u\n", word);
-            return false;
-        }
-        extCsd[word] = readHc32(kRegBufferPort);
-    }
-
-    const uint32_t status = readHc32(kRegInterruptStatus);
-    if (!(status & kIntTransferComplete)) {
-        IOLog("NativeSdhci: EXT_CSD ended without transfer complete, status 0x%08x\n", status);
-        return false;
-    }
-    clearInterrupts();
-    return true;
+    if (card.readBlock(lba, static_cast<u8 *>(bytes))) return true;
+    online = false;
+    __atomic_store_n(&native_sdhci_ready, 0, __ATOMIC_RELAXED);
+    logFailure();
+    return false;
 }
 
 bool NativeSdhci::probeCard()
 {
-    // The firmware selected the card and left it that way, so there is no
-    // CMD0/CMD1/CMD2/CMD3 sequence here: the only thing to find out is which
-    // relative address it used.
-    uint32_t response[4] = {};
-    bool selected = false;
-    for (uint16_t candidate : lumia950::kRcaCandidates) {
-        if (sendCommand(kCmd13SendStatus, static_cast<uint32_t>(candidate) << 16,
-                        kCmdResponse48 | kCmdCrcCheck | kCmdIndexCheck, response)) {
-            relativeAddress = candidate;
-            selected = true;
-            break;
-        }
-    }
-    if (!selected) {
-        IOLog("NativeSdhci: no response from the card at RCA 1, 2 or 0; "
-              "the firmware may not have left it selected\n");
+    const RegisterIo registers = {
+        this, ioRead8, ioRead32, ioWrite8, ioWrite16, ioWrite32, ioDelay
+    };
+    if (!host.configure(registers) ||
+        !card.attach(host, lumia950::kRcaCandidates,
+                     sizeof lumia950::kRcaCandidates / sizeof lumia950::kRcaCandidates[0])) {
+        logFailure();
         return false;
     }
-    __atomic_store_n(&native_sdhci_rca, relativeAddress, __ATOMIC_RELAXED);
-    IOLog("NativeSdhci: card answers at RCA %u, status 0x%08x\n", relativeAddress, response[0]);
-    native_sdhci_stage = 1;
-
-    uint32_t csd[4] = {};
-    if (!readCsd(relativeAddress, csd)) {
-        IOLog("NativeSdhci: CMD9 (SEND_CSD) failed\n");
-        return false;
-    }
-
-    CsdInfo info = {};
-    if (!decodeCsd(csd, &info)) {
-        IOLog("NativeSdhci: CSD %08x %08x %08x %08x is not decodable\n",
-              csd[0], csd[1], csd[2], csd[3]);
-        return false;
-    }
-    IOLog("NativeSdhci: CSD structure %u, read block length %u, "
-          "C_SIZE %u, C_SIZE_MULT %u, saturated %u\n",
-          info.structure, info.readBlockLen, info.cSize, info.cSizeMult, info.saturated ? 1 : 0);
-    native_sdhci_stage = 2;
-
-    if (info.saturated) {
-        uint32_t extCsd[128] = {};
-        if (!readExtCsd(extCsd)) {
-            IOLog("NativeSdhci: CMD8 (SEND_EXT_CSD) failed, capacity unknown\n");
-            return false;
-        }
-        capacityBytes = parseExtCsdSectorCount(reinterpret_cast<const uint8_t *>(extCsd));
-        if (!capacityBytes) {
-            IOLog("NativeSdhci: EXT_CSD reports no sectors\n");
-            return false;
-        }
-        IOLog("NativeSdhci: EXT_CSD sector count gives %llu bytes\n",
-              static_cast<unsigned long long>(capacityBytes));
-    } else {
-        capacityBytes = info.capacityBytes;
-    }
-
-    if (capacityBytes < lumia950::kLogicalBlockBytes * 2) {
-        IOLog("NativeSdhci: capacity %llu bytes is too small to hold a partition table\n",
-              static_cast<unsigned long long>(capacityBytes));
-        return false;
-    }
+    relativeAddress = card.info().relativeAddress;
+    capacityBytes = card.info().capacityBytes;
     blockCount = capacityBytes / lumia950::kLogicalBlockBytes;
+    __atomic_store_n(&native_sdhci_rca, relativeAddress, __ATOMIC_RELAXED);
     native_sdhci_stage = 3;
+    IOLog("NativeSdhci: RCA %u, CSD %u, MMC %u, EXT_CSD %u, user partition, 512-byte sectors\n",
+          relativeAddress, card.info().csd.structure, card.info().csd.mmcVersion,
+          card.info().extCsd.revision);
 
-    // eMMC ignores CMD16 when EXT_CSD sets the block length, so a refusal here
-    // is informational, not fatal.
-    if (!sendCommand(kCmd16SetBlockLength, lumia950::kLogicalBlockBytes,
-                     kCmdResponse48 | kCmdCrcCheck | kCmdIndexCheck, response)) {
-        IOLog("NativeSdhci: CMD16 (SET_BLOCKLEN) refused; continuing\n");
-    }
-
-    // The cheapest end-to-end proof that the command path works: read the GPT
-    // header and look for its signature.
     alignas(8) uint8_t gpt[lumia950::kLogicalBlockBytes] = {};
-    if (readBlockPio(lumia950::kGptHeaderLba, gpt)) {
-        const bool signature = memcmp(gpt, lumia950::kGptSignature, sizeof lumia950::kGptSignature) == 0;
-        IOLog("NativeSdhci: GPT header %s\n", signature ? "found" : "missing (signature mismatch)");
-        native_sdhci_stage = signature ? 4 : 3;
+    if (!readBlockPio(lumia950::kGptHeaderLba, gpt)) return false;
+    if (memcmp(gpt, lumia950::kGptSignature, sizeof lumia950::kGptSignature) != 0) {
+        IOLog("NativeSdhci: GPT signature missing; not publishing the firmware medium\n");
+        return false;
     }
+    native_sdhci_stage = 4;
+    IOLog("NativeSdhci: GPT signature read successfully\n");
     return true;
 }
-
-// ---------------------------------------------------------------------------
-// IOService
-// ---------------------------------------------------------------------------
 
 bool NativeSdhci::start(IOService *provider)
 {
@@ -403,7 +262,6 @@ bool NativeSdhci::start(IOService *provider)
           reinterpret_cast<void *>(const_cast<uint8_t *>(core)));
 
     logHost();
-    resetCommandLine();
     native_sdhci_stage = 0;
 
     if (!probeCard()) {
@@ -431,11 +289,16 @@ void NativeSdhci::stop(IOService *provider)
         online = false;
         IOLockUnlock(gate);
     }
+    card.detach();
+    host.stop();
+    __atomic_store_n(&native_sdhci_ready, 0, __ATOMIC_RELAXED);
     IOBlockStorageDevice::stop(provider);
 }
 
 void NativeSdhci::free()
 {
+    card.detach();
+    host.stop();
     if (hcMap) { hcMap->release(); hcMap = nullptr; hc = nullptr; }
     if (coreMap) { coreMap->release(); coreMap = nullptr; core = nullptr; }
     if (gate) { IOLockFree(gate); gate = nullptr; }
@@ -507,6 +370,7 @@ IOReturn NativeSdhci::doAsyncReadWrite(IOMemoryDescriptor *buffer, UInt64 block,
     }
     if (buffer->getDirection() != kIODirectionIn) return kIOReturnBadArgument;
 
+    if (count > ~static_cast<uint64_t>(0) / lumia950::kLogicalBlockBytes) return kIOReturnBadArgument;
     const uint64_t bytes = count * lumia950::kLogicalBlockBytes;
     if (buffer->getLength() < bytes) return kIOReturnBadArgument;
 

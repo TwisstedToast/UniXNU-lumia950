@@ -139,8 +139,9 @@ def adt_command(spec: dict, adt: Path, args: argparse.Namespace) -> list[str]:
                       ("psci_method", "--psci-method")):
         if values.get(key) is not None:
             command += [flag, str(values[key])]
-    if args.dram_base is not None:
-        command += ["--dram-base", hex(args.dram_base)]
+    dram_base = args.dram_base if args.dram_base is not None else spec.get("dram_base")
+    if dram_base is not None:
+        command += ["--dram-base", hex(dram_base)]
     if args.chip_id is not None:
         command += ["--chip-id", str(args.chip_id)]
     command += ["--unique-chip-id", args.unique_chip_id]
@@ -222,7 +223,7 @@ def main() -> int:
     parser.add_argument("--dram-size", type=lambda value: int(value, 0),
                         help="override board.toml [payload] dram_size")
     parser.add_argument("--dram-base", type=lambda value: int(value, 0),
-                        help="override the ADT DRAM base (default: the SoC's 0x80000000)")
+                        help="override the ADT DRAM base (default: board.toml, or the SoC's zero base)")
     parser.add_argument("--chip-id", type=lambda value: int(value, 0),
                         help="override board.toml [payload.adt] chip_id")
     parser.add_argument("--args", help="override board.toml [payload] kernel_args")

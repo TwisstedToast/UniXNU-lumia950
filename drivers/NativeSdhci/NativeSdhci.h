@@ -5,6 +5,7 @@
 #include <IOKit/IOLib.h>
 #include <IOKit/IOService.h>
 #include <IOKit/storage/IOBlockStorageDevice.h>
+#include "PollingHost.h"
 
 // IOMemoryMap has no header of its own in the kernel tree: IOService.h declares the
 // name for mapDeviceMemoryWithIndex(), and NativeSdhci.cpp includes the descriptor
@@ -49,19 +50,15 @@ private:
 
     bool mapWindows(IOService *provider);
     void logHost();
-    void resetCommandLine();
-
-    // One command, polled to completion: interrupt delivery is not part of this
-    // bring-up rung, because the SoC is GICv2 and the GIC path is the open
-    // question those interrupts depend on.
-    bool sendCommand(uint8_t index, uint32_t argument, uint16_t flags, uint32_t response[4]);
-    bool waitPresent(uint32_t mask, uint32_t value, uint32_t timeoutUs);
-    void clearInterrupts();
-
     bool readBlockPio(uint64_t lba, void *bytes);
-    bool readCsd(uint16_t rca, uint32_t csd[4]);
-    bool readExtCsd(uint32_t extCsd[128]);
     bool probeCard();
+    void logFailure();
+    static sdhci::u8 ioRead8(void *context, sdhci::u32 offset);
+    static sdhci::u32 ioRead32(void *context, sdhci::u32 offset);
+    static void ioWrite8(void *context, sdhci::u32 offset, sdhci::u8 value);
+    static void ioWrite16(void *context, sdhci::u32 offset, sdhci::u16 value);
+    static void ioWrite32(void *context, sdhci::u32 offset, sdhci::u32 value);
+    static void ioDelay(void *context, sdhci::u32 microseconds);
 
     IOLock            *gate = nullptr;
     volatile uint8_t  *hc = nullptr;
@@ -76,6 +73,8 @@ private:
     uint64_t blockCount = 0;
     bool     online = false;
     bool     writeRefused = false;
+    sdhci::PollingHost host;
+    sdhci::WarmCard card;
 };
 
 #endif // NATIVE_SDHCI_H

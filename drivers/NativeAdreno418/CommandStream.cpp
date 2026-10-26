@@ -20,19 +20,20 @@ UcodeTarget ucodeTarget(CpUcode which)
 
 bool planUcodeLoad(const u32 *blob, u32 blobWords, CpUcode which, UcodePlan *plan)
 {
-    if (!blob || !plan) { return false; }
-    // Two words is the shortest thing that is an image: a version and one word.
-    if (blobWords < 2) { return false; }
-    // An all-ones version is the window not answering, and zero is not a
-    // version a firmware image carries; either way there is nothing to load.
-    if (blob[0] == 0xffffffffu || blob[0] == 0) { return false; }
+    if (!plan) { return false; }
+    *plan = {};
+    if (!blob) { return false; }
+    const u32 versionIndex = which == CpUcode::Pfp ? 5 : 1;
+    if (blobWords <= versionIndex || blobWords > 65536 ||
+        (which == CpUcode::Pm4 && (blobWords - 1) % 3 != 0)) { return false; }
+    if (blob[versionIndex] == 0xffffffffu || blob[versionIndex] == 0) { return false; }
 
     const UcodeTarget target = ucodeTarget(which);
     plan->addressIndex = target.addressIndex;
     plan->dataIndex = target.dataIndex;
     plan->data = blob + 1;
     plan->dataWords = blobWords - 1;
-    plan->version = blob[0];
+    plan->version = blob[versionIndex];
     return true;
 }
 
@@ -53,14 +54,14 @@ bool ringBaseUsable(u32 address, u32 ringBytes)
 
 u32 header(u32 opcode, u32 payloadDwords)
 {
-    if (payloadDwords > kMaxPayloadDwords) { return 0; }
+    if (payloadDwords == 0 || payloadDwords > kMaxPayloadDwords) { return 0; }
     if (opcode > 0xffu) { return 0; }
-    return kType3 | (payloadDwords << kCountShift) | opcode;
+    return kType3 | ((payloadDwords - 1) << kCountShift) | (opcode << 8);
 }
 
 u32 packetDwords(u32 payloadDwords)
 {
-    return payloadDwords > kMaxPayloadDwords ? 0 : 1 + payloadDwords;
+    return payloadDwords == 0 || payloadDwords > kMaxPayloadDwords ? 0 : 1 + payloadDwords;
 }
 
 u32 writeNop(u32 *out, u32 capacity, u32 payloadDwords)
@@ -91,7 +92,7 @@ u32 writeCacheFlush(u32 *out, u32 capacity, u32 event, bool interrupt)
 
 u32 writeFence(u32 *out, u32 capacity, u32 address, u32 value, bool interrupt)
 {
-    if (!out || capacity < 4) { return 0; }
+    if (!out || capacity < 4 || (address & 3) != 0) { return 0; }
     out[0] = header(kOpEventWrite, 3);
     out[1] = kEventCacheFlushTs | (interrupt ? kEventIrq : 0u);
     out[2] = address;
@@ -102,7 +103,7 @@ u32 writeFence(u32 *out, u32 capacity, u32 address, u32 value, bool interrupt)
 u32 writeSubmissionTail(u32 *out, u32 capacity, u32 fenceAddress, u32 fenceValue,
                         bool interrupt)
 {
-    if (!out) { return 0; }
+    if (!out || (fenceAddress & 3) != 0) { return 0; }
     // 2 words for the flush, 2 for the wait, 4 for the fence.
     constexpr u32 kTailWords = 2 + 2 + 4;
     if (capacity < kTailWords) { return 0; }
@@ -115,6 +116,37 @@ u32 writeSubmissionTail(u32 *out, u32 capacity, u32 fenceAddress, u32 fenceValue
     // leave a submission no one can wait for.
     if (flush == 0 || wait == 0 || fence == 0) { return 0; }
     return flush + wait + fence;
+}
+
+u32 writeMemoryFill(u32 *out, u32 capacity, u32 address, u32 value, u32 dwords)
+{
+    if (!out || dwords == 0 || dwords >= kMaxPayloadDwords ||
+        (address & 3) != 0 || static_cast<u64>(address) + static_cast<u64>(dwords) * 4 >
+        (1ull << 32) || capacity < dwords + 2) { return 0; }
+    out[0] = header(kOpMemWrite, dwords + 1);
+    out[1] = address;
+    for (u32 index = 0; index < dwords; index++) { out[index + 2] = value; }
+    return dwords + 2;
+}
+
+u32 writeMeInit(u32 *out, u32 capacity)
+{
+    if (!out || capacity < 18) { return 0; }
+    const u32 values[17] = {0x3f7, 0, 0, 0, 0x80, 0x100, 0x180, 0x6600,
+                           0x150, 0x14e, 0x154, 1, 0, 0, 0x20000000, 0, 0};
+    out[0] = header(kOpMeInit, 17);
+    for (u32 index = 0; index < 17; index++) { out[index + 1] = values[index]; }
+    return 18;
+}
+
+u32 ringControl(u32 ringBytes)
+{
+    if (ringBytes < 4096 || ringBytes > 1024 * 1024 ||
+        (ringBytes & (ringBytes - 1)) != 0) { return 0; }
+    u32 quadwords = ringBytes / 8;
+    u32 exponent = 0;
+    while (quadwords > 1) { quadwords >>= 1; exponent++; }
+    return (1u << 27) | exponent;
 }
 
 bool ringHasRoom(u32 writePointer, u32 readPointer, u32 ringDwords, u32 submissionDwords)
@@ -158,6 +190,7 @@ void fenceWaitBegin(FenceWaiter *waiter, u32 target)
 FenceWait fenceWaitPoll(FenceWaiter *waiter, u32 sample)
 {
     if (!waiter) { return FenceWait::TimedOut; }
+    if (waiter->polls >= kFencePolls) { return FenceWait::TimedOut; }
     if (fenceReached(sample, waiter->target)) {
         waiter->polls = 0;
         return FenceWait::Complete;

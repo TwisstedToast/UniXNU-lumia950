@@ -13,16 +13,29 @@ namespace sdhci {
 // Decoded CSD. eMMC parts above 2 GiB report a saturated CSD, so capacity for
 // those comes from EXT_CSD (parseExtCsdSectorCount) instead.
 struct CsdInfo {
-    u32 structure;       // 0: v1.0, 1: v2.0 (SD), 2: v3.0 (eMMC)
+    u32 structure;
+    u32 mmcVersion;
     u32 readBlockLen;    // log2 of the block length
     u32 cSize;
     u32 cSizeMult;
     u64 capacityBytes;   // from the CSD alone; 0 when it cannot express it
-    bool     saturated;       // structure 2 with C_SIZE at its 12-bit maximum
+    bool saturated;
 };
 
 // Decodes a 128-bit CSD as four big-endian words, csd[0] holding bits 127..96.
 bool decodeCsd(const u32 csd[4], CsdInfo *out);
+
+void normalizeResponse136(const u32 registers[4], u32 response[4]);
+
+struct ExtCsdInfo {
+    u64 capacityBytes;
+    u32 sectorBytes;
+    u8 revision;
+    u8 partitionAccess;
+    bool commandQueueEnabled;
+};
+
+bool decodeExtCsd(const u8 *bytes, u32 length, ExtCsdInfo *out);
 
 // Reads SEC_COUNT (offset 212, little-endian, 512-byte units) from a 512-byte
 // EXT_CSD image. Returns 0 when the image cannot describe a usable capacity.

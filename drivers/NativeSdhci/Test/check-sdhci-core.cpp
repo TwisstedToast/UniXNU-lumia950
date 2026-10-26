@@ -44,10 +44,10 @@ static void expectEq(u64 actual, u64 expected, const char *what)
 // A CSD v1.0 image describing exactly 1 GiB.
 // C_SIZE [73:62] = 4095 spans csd[1] bits 9..0 and csd[2] bits 31..30,
 // C_SIZE_MULT [49:47] = 7, READ_BL_LEN [83:80] = 9 (512 bytes).
-static const u32 kCsd1GiB[4] = { 0x00000000u, 0x000903FFu, 0xC0038000u, 0x00000000u };
+static const u32 kCsd1GiB[4] = { 0x4c000000u, 0x000903FFu, 0xC0038000u, 0x00000000u };
 
 // A saturated eMMC CSD v3.0 image: structure 2, C_SIZE at its 12-bit maximum.
-static const u32 kCsdSaturated[4] = { 0x80000000u, 0x000903FFu, 0xC0038000u, 0x00000000u };
+static const u32 kCsdSaturated[4] = { 0xd0000000u, 0x000903FFu, 0xC0038000u, 0x00000000u };
 
 int main()
 {
@@ -76,13 +76,26 @@ int main()
     expect(sdhci::decodeCsd(kCsdSaturated, &info), "saturated eMMC CSD decodes");
     expect(info.saturated, "a 12-bit C_SIZE maximum is reported as saturated");
     expectEq(info.capacityBytes, 0, "a saturated CSD reports no capacity");
-    expectEq(info.structure, 2, "saturated CSD is structure 2");
+    expectEq(info.structure, 3, "modern eMMC CSD structure 3 is valid");
+    expectEq(info.mmcVersion, 4, "MMC specification version is decoded");
 
-    u32 bad[4] = { 0xC0000000u, 0, 0, 0 };   // structure 3 does not exist
-    expect(!sdhci::decodeCsd(bad, &info), "an unknown CSD structure is refused");
+    u32 bad[4] = { 0, 0x00090000, 0, 0 };
+    expect(!sdhci::decodeCsd(bad, &info), "unsupported MMC structure zero is refused");
     u32 badLen[4] = { 0, 0x000F0000u, 0, 0 };  // READ_BL_LEN = 15
     expect(!sdhci::decodeCsd(badLen, &info), "an impossible block length is refused");
     expect(!sdhci::decodeCsd(nullptr, &info), "a null CSD is refused");
+    const u32 csdStructure2[4] = { 0x90000000, 0x00090000, 0, 0 };
+    expect(sdhci::decodeCsd(csdStructure2, &info), "structure 2 MMC CSD decodes");
+    expectEq(info.capacityBytes, 2048, "MMC capacity uses C_SIZE_MULT rather than an SDHC formula");
+    const u32 rawResponse[4] = { 0x01234567, 0x89abcdef, 0x13579bdf, 0x2468ace0 };
+    u32 normalized[4] = {};
+    sdhci::normalizeResponse136(rawResponse, normalized);
+    expectEq(normalized[0], 0x68ace013, "R2 top word reverses response registers and restores CRC shift");
+    expectEq(normalized[1], 0x579bdf89, "R2 middle word carries the adjacent byte");
+    expectEq(normalized[2], 0xabcdef01, "R2 second-low word carries the adjacent byte");
+    expectEq(normalized[3], 0x23456700, "R2 low byte is the omitted CRC byte");
+    sdhci::normalizeResponse136(normalized, normalized);
+    expectEq(normalized[0], 0x456700ab, "in-place R2 normalization has no overwrite hazard");
 
     // --- EXT_CSD ---------------------------------------------------------
     u8 extCsd[512];

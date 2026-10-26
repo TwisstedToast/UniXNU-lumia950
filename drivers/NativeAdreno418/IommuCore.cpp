@@ -21,12 +21,11 @@ namespace {
 // The attribute field both levels share, before it is shifted into place. The
 // kernel sets NG and S unconditionally, TEX(1) for normal memory, and (with
 // permissions enabled) the access flag plus unprivileged access.
-u32 attributes(bool cacheable, bool readOnly)
+u32 attributes(bool readOnly)
 {
     u32 value = kAttrNg | kAttrS | (kAttrTexNormal << kAttrTexShift);
     value |= kAttrAp0 | kAttrAp1;            // access flag, unprivileged
     if (readOnly) { value |= kAttrAp2; }
-    if (cacheable) { value |= kAttrB | kAttrC; }
     return value;
 }
 
@@ -42,7 +41,8 @@ bool withinWindow(u64 address)
 u32 pageDescriptor(u64 physical, bool cacheable, bool executeNever, bool nonSecure)
 {
     if (!withinWindow(physical)) { return 0; }
-    u32 pte = attributes(cacheable, false) << attributeShift(2);
+    u32 pte = attributes(false) << attributeShift(2);
+    if (cacheable) { pte |= kAttrB | kAttrC; }
     if (executeNever) { pte |= executeNeverBit(2); }
     pte |= static_cast<u32>(physical) & kPageAddressMask;
     pte |= kTypePage;
@@ -57,7 +57,8 @@ u32 pageDescriptor(u64 physical, bool cacheable, bool executeNever, bool nonSecu
 u32 sectionDescriptor(u64 physical, bool cacheable, bool executeNever, bool nonSecure)
 {
     if (!withinWindow(physical)) { return 0; }
-    u32 pte = attributes(cacheable, false) << attributeShift(1);
+    u32 pte = attributes(false) << attributeShift(1);
+    if (cacheable) { pte |= kAttrB | kAttrC; }
     if (executeNever) { pte |= executeNeverBit(1); }
     pte |= static_cast<u32>(physical) & kSectionAddressMask;
     pte |= kTypePage;
@@ -86,7 +87,12 @@ u32 secondLevelIndex(u64 address)
 
 bool mapPage(Tables &tables, u64 address, u64 physical, bool cacheable, bool executeNever)
 {
-    if (!tables.firstLevel || !tables.secondLevel) { return false; }
+    if (!tables.firstLevel || !tables.secondLevel ||
+        tables.secondLevelUsed > tables.secondLevelCount ||
+        (tables.secondLevelPhysical & (kTableAlign - 1)) != 0 ||
+        tables.secondLevelPhysical >= kAddressLimit ||
+        static_cast<u64>(tables.secondLevelCount) * kTableBytes >
+        kAddressLimit - tables.secondLevelPhysical) { return false; }
     if (!withinWindow(address) || !withinWindow(physical)) { return false; }
     if ((address & (kPageBytes - 1)) || (physical & (kPageBytes - 1))) { return false; }
 
@@ -143,7 +149,8 @@ bool mapSection(u32 *firstLevel, u64 address, u64 physical, bool cacheable,
 bool unmapPage(Tables &tables, u64 address)
 {
     if (!tables.firstLevel || !tables.secondLevel) { return false; }
-    if (!withinWindow(address)) { return false; }
+    if (!withinWindow(address) || (address & (kPageBytes - 1)) != 0 ||
+        tables.secondLevelUsed > tables.secondLevelCount) { return false; }
 
     u32 *entry = &tables.firstLevel[firstLevelIndex(address)];
     if ((*entry & kTypeMask) != kTypeTable) { return false; }
@@ -162,7 +169,7 @@ bool unmapPage(Tables &tables, u64 address)
 
 u32 pagesFor(u64 address, u64 bytes)
 {
-    if (bytes == 0) { return 0; }
+    if (bytes == 0 || address >= kAddressLimit || bytes > kAddressLimit - address) { return 0; }
     const u64 start = address & ~static_cast<u64>(kPageBytes - 1);
     const u64 end = address + bytes;
     if (end < address) { return 0; }                 // wrapped: not a range

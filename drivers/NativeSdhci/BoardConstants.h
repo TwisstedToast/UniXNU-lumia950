@@ -54,7 +54,7 @@ constexpr sdhci::u32 kLogicalBlockBytes = 512;
 
 // eMMC relative card address. The firmware assigned one and selected the card;
 // these are the values EDK2 and Linux hosts normally use, tried in order.
-constexpr sdhci::u16 kRcaCandidates[] = { 1, 2, 0 };
+constexpr sdhci::u16 kRcaCandidates[] = { 1, 2 };
 
 // The GPT header sits in LBA 1 with the signature "EFI PART". Reading it is the
 // cheapest end-to-end proof that the command path works on real silicon.

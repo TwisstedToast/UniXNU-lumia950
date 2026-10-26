@@ -5,11 +5,11 @@ Two different things need this number and they must not drift:
   * the menu's layout (scripts/check-payload.py picks portrait for a tall panel), and
   * any screenshot quoted as evidence, which is only this panel's if it is this size.
 
-On the phone the resolution is not configured anywhere in this repository: the firmware's GOP
-mode is 1440x2560, DarwinBoot hands that to the kernel as boot video, and iOS takes its
-geometry from `PE_current_console` (upstream NativeMobileDisplay.cpp). On QEMU the equivalent
-is the runner's `--display-size 1440x2560`. This module is the host-side copy of that fact,
-for the layout report and for scripts/check-screenshot.py.
+These constants describe the native panel, not a guarantee of the firmware GOP mode.
+The on-device 2026-10-26 probe measured 1080x1920 with a 1080-pixel stride. DarwinBoot
+must use the actual GOP mode for boot video. Pass `--panel 1080x1920` to the screenshot
+checker when checking captures from that mode; a camera photograph is not a framebuffer
+capture. QEMU's display size must also be selected explicitly for the mode being tested.
 """
 
 WIDTH = 1440

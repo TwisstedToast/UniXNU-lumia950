@@ -1,0 +1,60 @@
+{
+  "date": "2026-10-26",
+  "route": "native graphics and iOS port, not a Windows-only demo",
+  "implemented": [
+    "RPM request encoder and correlated ACK parser",
+    "Bounded transaction/session state machine",
+    "Word-access SMD packet FIFO transport",
+    "Bounded native CLOSED/OPENING/OPENED channel handshake"
+  ],
+  "source_sha256": {
+    "RpmCore.h": "1777b37f8a2b2cb8299ee5cfc8d1fca336eed044a69d254238ed182494d99d51",
+    "RpmCore.cpp": "342dad1e35d8a2f37db34c7ebf662af706abfcef993594227d2b9433679f6257",
+    "SmdPipe.h": "c0c5f9c480e0820c6bb8d988397c0e020fb45ab53ffd1d11f8a97b23c4fe63de",
+    "SmdPipe.cpp": "8659060d19a4138e5f37b986e3a255dbecb9596a1bb8fec21d188da384a50ca0",
+    "Test/check-rpm.cpp": "a996320f538ac953554048c05084685bccb75b79a921b347835b18d6e4f23da4"
+  },
+  "validation": {
+    "rpm_smd": "190 ASan/UBSan host checks, 0 failures; simulated SMEM only",
+    "gpu_backend": "304 ASan/UBSan host checks, 0 failures",
+    "gpu_tools": "7 Python tests",
+    "report_and_clock_lookup": "409 ASan/UBSan host checks, 0 failures",
+    "strict_integer_warnings": "-Wconversion -Wsign-conversion -Werror passed",
+    "clang_static_analysis": "0 diagnostics for both new core implementations",
+    "aarch64_coff_crosscompile": true,
+    "arm64_macho_freestanding_crosscompile": true,
+    "macho_scope": "No SDK includes, no IOKit build or recorded-XNU-ABI verification",
+    "workflow": "YAML parsed and 33 shell blocks syntax-checked",
+    "diff_whitespace": "git diff --check passed"
+  },
+  "unchanged_efi_sha256": {
+    "LumiaProbe.efi": "fbf9e4c469871d3c516e61a8b0e5ebf8459cf562deba21e3064293b2bb2e2b41",
+    "LumiaHandoff.efi": "c7b1569099af9ac41af1424cf161b7b03afa8078532488e2536e2aba2f678b2d",
+    "LumiaGpuProbe.efi": "85e964d1e2d22f61ca1e8ca9eff4ecfa3ddefcd202f12480eff7c5d30494335f"
+  },
+  "runtime_status": {
+    "new_phone_image_installed": false,
+    "new_handset_gpu_power_votes_sent": false,
+    "native_smem_bindings_qualified": false,
+    "native_resource_vote_policy_implemented": false,
+    "handset_regulator_profile_qualified": false,
+    "new_xnu_iokit_driver_build": false,
+    "gpu_raster_or_blit_path_implemented": false,
+    "native_gpu_rendered_frame_observed": false,
+    "native_60fps_observed": false,
+    "ios_boot_observed": false
+  },
+  "remaining": [
+    "Qualify handset SMEM and IPC mappings and exclusive channel ownership",
+    "Implement shared resource lease/vote policy and qualify actual PMIC graphics profile",
+    "Bring up parent clocks, CX/GX domains and branch clocks on real hardware",
+    "Validate SMMU/security ownership and first hardware GPU completion",
+    "Implement actual draw/presentation and measure completed GPU frames plus scanout cadence",
+    "Compile and validate the full XNU/IOKit driver build"
+  ],
+  "notes": [
+    "The graphics parent is RPM clk2 resource 1 with KHz rate key; MMSS AHB is clk1 resource 3.",
+    "No raw PMIC or GPU writes were sent to the phone.",
+    "The firmware diagnostic images are unchanged; freestanding core compilation does not prove a bootable kernel."
+  ]
+}

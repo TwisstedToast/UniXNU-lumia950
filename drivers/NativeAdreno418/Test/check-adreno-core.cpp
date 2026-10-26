@@ -169,17 +169,15 @@ int main()
     expectEq(adreno::smmu::executeNeverBit(1), 0x10, "XN is bit 4 in a section");
     expectEq(adreno::smmu::executeNeverBit(2), 0x1, "XN is bit 0 in a page");
 
-    // 0xcf is the attribute field io-pgtable writes for normal, cacheable,
-    // writable memory: NG|S|TEX(1)|AF|AP1|B|C, where TEX(1) and B share bit 2.
-    expectEq(adreno::smmu::pageDescriptor(0x80000000u, true, false, true), 0x80000cf2u,
+    expectEq(adreno::smmu::pageDescriptor(0x80000000u, true, false, true), 0x80000c7eu,
              "a cacheable page descriptor");
-    expectEq(adreno::smmu::pageDescriptor(0x80000000u, true, true, true), 0x80000cf3u,
+    expectEq(adreno::smmu::pageDescriptor(0x80000000u, true, true, true), 0x80000c7fu,
              "execute-never only moves bit 0");
     expectEq(adreno::smmu::pageDescriptor(0x80000000u, false, false, true), 0x80000c72u,
-             "a device page keeps TEX(1) and drops B and C");
-    expectEq(adreno::smmu::sectionDescriptor(0x80000000u, true, false, true), 0x800b3c02u,
+             "a normal noncacheable page keeps TEX(1) and drops B and C");
+    expectEq(adreno::smmu::sectionDescriptor(0x80000000u, true, false, true), 0x800b1c0eu,
              "a non-secure section descriptor");
-    expectEq(adreno::smmu::sectionDescriptor(0x80000000u, true, false, false), 0x80033c02u,
+    expectEq(adreno::smmu::sectionDescriptor(0x80000000u, true, false, false), 0x80031c0eu,
              "a secure section descriptor has no NS bit");
     expectEq(adreno::smmu::tableDescriptor(0x80000400u, false), 0x80000401u,
              "a coarse table pointer is table-type and 1 KiB aligned");
@@ -215,7 +213,7 @@ int main()
            "mapping a page allocates its coarse table");
     expectEq(tables.secondLevelUsed, 1, "one table allocated");
     expectEq(firstLevel[0x800], 0x90000009u, "the first-level entry points at the pool, non-secure");
-    expectEq(tablesPool[0], 0x40000cf2u, "the page descriptor lands in the second level");
+    expectEq(tablesPool[0], 0x40000c7eu, "the page descriptor lands in the second level");
 
     expect(adreno::smmu::mapPage(tables, 0x80001000u, 0x40001000u, true, false),
            "a second page in the same megabyte reuses the table");
@@ -236,7 +234,7 @@ int main()
 
     expect(adreno::smmu::mapSection(firstLevel, 0x80300000u, 0x40300000u, true, false, true),
            "a section maps at the first level");
-    expectEq(firstLevel[0x803], 0x403b3c02u, "the section descriptor is in place");
+    expectEq(firstLevel[0x803], 0x403b1c0eu, "the section descriptor is in place");
     expect(!adreno::smmu::mapPage(tables, 0x80300000u, 0x50000000u, true, false),
            "a page inside a mapped section is refused");
     expect(!adreno::smmu::mapSection(firstLevel, 0x80000000u, 0x60000000u, true, false, true),
@@ -251,31 +249,37 @@ int main()
 
     // --- the command processor's stream (rung 4) ---------------------------
     expectEq(adreno::pm4::kType3, 0xc0000000, "command packets are PM4 type 3");
-    expectEq(adreno::pm4::header(adreno::pm4::kOpNop, 0), 0xc0000010u, "a NOP header");
-    expectEq(adreno::pm4::header(adreno::pm4::kOpEventWrite, 3), 0xc0030046u,
+    expectEq(adreno::pm4::header(adreno::pm4::kOpNop, 1), 0xc0001000u, "a NOP header");
+    expectEq(adreno::pm4::header(adreno::pm4::kOpNop, 0), 0u, "zero payload is invalid");
+    expectEq(adreno::pm4::header(adreno::pm4::kOpEventWrite, 3), 0xc0024600u,
              "CP_EVENT_WRITE with three payload words");
-    expectEq(adreno::pm4::header(adreno::pm4::kOpWaitForIdle, 1), 0xc0010026u,
+    expectEq(adreno::pm4::header(adreno::pm4::kOpWaitForIdle, 1), 0xc0002600u,
              "CP_WAIT_FOR_IDLE with one payload word");
-    expectEq(adreno::pm4::header(adreno::pm4::kOpNop, 0x4000), 0u,
+    expectEq(adreno::pm4::header(adreno::pm4::kOpNop, 0x4001), 0u,
              "a payload count past 14 bits is refused, not masked");
     expectEq(adreno::pm4::header(0x100, 0), 0u, "an opcode past 8 bits is refused");
     expectEq(adreno::pm4::packetDwords(3), 4, "a packet is its header plus its payload");
+    expectEq(adreno::pm4::header(adreno::pm4::kOpNop, 0x4000), 0xffff1000u,
+             "the largest packet uses count minus one in bits 29:16");
+    expectEq(adreno::pm4::packetDwords(0), 0, "zero payload is not representable");
+    expectEq(adreno::pm4::ringControl(65536), 0x0800000d, "ring size is log2 of quadwords with RPTR shadow disabled");
+    expectEq(adreno::pm4::ringControl(4095), 0, "invalid ring byte count is refused");
 
     u32 stream[16];
     for (u32 &word : stream) { word = 0xdeadbeefu; }
 
     expectEq(adreno::pm4::writeWaitForIdle(stream, 16), 2, "wait-for-idle is two words");
-    expectEq(stream[0], 0xc0010026u, "wait-for-idle header");
+    expectEq(stream[0], 0xc0002600u, "wait-for-idle header");
     expectEq(stream[1], 0, "wait-for-idle payload is zero");
 
     expectEq(adreno::pm4::writeCacheFlush(stream, 16, adreno::pm4::kEventHlsqFlush, false), 2,
              "a cache flush is two words");
-    expectEq(stream[0], 0xc0010046u, "event-write header");
+    expectEq(stream[0], 0xc0004600u, "event-write header");
     expectEq(stream[1], 7, "HLSQ_FLUSH is event 7");
 
     expectEq(adreno::pm4::writeFence(stream, 16, 0x90001000u, 42, true), 4,
              "a fence is four words");
-    expectEq(stream[0], 0xc0030046u, "fence header");
+    expectEq(stream[0], 0xc0024600u, "fence header");
     expectEq(stream[1], 0x80000004u, "CACHE_FLUSH_TS with the interrupt bit");
     expectEq(stream[2], 0x90001000u, "the fence address");
     expectEq(stream[3], 42, "the value the CP writes");
@@ -293,14 +297,24 @@ int main()
     for (u32 &word : stream) { word = 0u; }
     expectEq(adreno::pm4::writeSubmissionTail(stream, 16, 0x90001000u, 7, true), 8,
              "the submission tail is flush, wait, fence");
-    expectEq(stream[0], 0xc0010046u, "tail word 0: event-write");
+    expectEq(stream[0], 0xc0004600u, "tail word 0: event-write");
     expectEq(stream[1], 7, "tail word 1: HLSQ_FLUSH");
-    expectEq(stream[2], 0xc0010026u, "tail word 2: wait-for-idle");
+    expectEq(stream[2], 0xc0002600u, "tail word 2: wait-for-idle");
     expectEq(stream[3], 0, "tail word 3: its zero");
-    expectEq(stream[4], 0xc0030046u, "tail word 4: the fence");
+    expectEq(stream[4], 0xc0024600u, "tail word 4: the fence");
     expectEq(stream[5], 0x80000004u, "tail word 5: CACHE_FLUSH_TS with the IRQ");
     expectEq(stream[6], 0x90001000u, "tail word 6: the fence address");
     expectEq(stream[7], 7, "tail word 7: the value");
+    expectEq(adreno::pm4::writeMemoryFill(stream, 16, 0x10001000, 0xabcd1234, 4), 6,
+             "CP memory fill has address plus data payload");
+    expectEq(stream[0], 0xc0043d00, "memory-write golden header from an independent packet layout");
+    expectEq(stream[1], 0x10001000, "memory-write address");
+    expectEq(stream[5], 0xabcd1234, "memory-write final data word");
+    expectEq(adreno::pm4::writeMemoryFill(stream, 16, 0xfffffffcu, 0, 2), 0,
+             "memory-write cannot wrap its 32-bit address space");
+    expectEq(adreno::pm4::writeFence(stream, 16, 1, 1, false), 0, "unaligned fence refused");
+    expectEq(adreno::pm4::writeSubmissionTail(stream, 16, 1, 1, false), 0,
+             "invalid fence leaves the entire tail unwritten");
 
     const u32 ringDwords = lumia950::kCpRingDwords;
     expect(adreno::pm4::ringHasRoom(0, 0, ringDwords, 8), "an empty ring has room for a tail");
@@ -326,22 +340,23 @@ int main()
     expectEq(adreno::pm4::ucodeTarget(adreno::pm4::CpUcode::Pfp).dataIndex, 0x0224u,
              "and its data port");
 
-    const u32 pm4Blob[] = { 0x00010203u, 0xa4a4a4a4u, 0x11111111u, 0x22222222u };
+    const u32 pm4Blob[] = { 0u, 0x004ff065u, 0x11111111u, 0x22222222u };
     adreno::pm4::UcodePlan plan = {};
     expect(adreno::pm4::planUcodeLoad(pm4Blob, 4, adreno::pm4::CpUcode::Pm4, &plan),
            "a blob with a version and an image is a plan");
-    expectEq(plan.version, 0x00010203u, "the version is word 0");
+    expectEq(plan.version, 0x004ff065u, "the version is image word 1, not its zero container header");
     expectEq(plan.dataWords, 3, "the image is everything after it");
-    expectEq(plan.data[0], 0xa4a4a4a4u, "the first image word");
+    expectEq(plan.data[0], 0x004ff065u, "the first image word includes the version instruction");
     expectEq(adreno::pm4::ucodeWriteCount(plan), 4, "one address write and one per image word");
 
     const u32 versionOnly[] = { 0x00010203u };
     expect(!adreno::pm4::planUcodeLoad(versionOnly, 1, adreno::pm4::CpUcode::Pm4, &plan),
            "a version with no image is not a plan");
-    const u32 deadWindow[] = { 0xffffffffu, 0x1u };
+    expectEq(adreno::pm4::ucodeWriteCount(plan), 0, "a rejected replacement clears the previously valid load plan");
+    const u32 deadWindow[] = { 0u, 0xffffffffu };
     expect(!adreno::pm4::planUcodeLoad(deadWindow, 2, adreno::pm4::CpUcode::Pfp, &plan),
            "an all-ones version is a dead window, not firmware");
-    const u32 noVersion[] = { 0u, 0x1u };
+    const u32 noVersion[] = { 0u, 0u };
     expect(!adreno::pm4::planUcodeLoad(noVersion, 2, adreno::pm4::CpUcode::Pm4, &plan),
            "zero is not a version a firmware image carries");
     adreno::pm4::UcodePlan fresh = {};
@@ -350,6 +365,17 @@ int main()
     expectEq(adreno::pm4::ucodeWriteCount(fresh), 0, "and a refused plan writes nothing");
     expect(!adreno::pm4::planUcodeLoad(pm4Blob, 4, adreno::pm4::CpUcode::Pm4, nullptr),
            "nowhere to put the plan is a refusal");
+    expectEq(plan.dataWords, 0, "a failed load plan cannot retain an earlier firmware image");
+    const u32 pfpBlob[] = {0, 1, 2, 3, 4, 0x4ff083};
+    expect(adreno::pm4::planUcodeLoad(pfpBlob, 6, adreno::pm4::CpUcode::Pfp, &plan),
+           "PFP with its container header and version instruction is accepted");
+    expectEq(plan.version, 0x4ff083, "PFP version is word five");
+    expect(!adreno::pm4::planUcodeLoad(nullptr, 6, adreno::pm4::CpUcode::Pfp, &plan),
+           "a null firmware replacement is refused after a valid plan");
+    expect(plan.data == nullptr && plan.dataWords == 0 && plan.version == 0 &&
+           plan.addressIndex == 0 && plan.dataIndex == 0, "every stale load-plan field is cleared before input validation");
+    expect(!adreno::pm4::planUcodeLoad(pfpBlob, 5, adreno::pm4::CpUcode::Pfp, &plan),
+           "truncated PFP is refused before the version read");
 
     expect(adreno::pm4::ringBaseUsable(0x90000000u, 0x10000),
            "a ring base aligned to its own size is usable");
@@ -386,8 +412,8 @@ int main()
     expectEq(pending, adreno::pm4::kFencePolls - 1, "one poll short of the budget is still pending");
     expect(adreno::pm4::fenceWaitPoll(&waiter, 0) == adreno::pm4::FenceWait::TimedOut,
            "the poll that spends the budget times out");
-    expect(adreno::pm4::fenceWaitPoll(&waiter, 1) == adreno::pm4::FenceWait::Complete,
-           "and the same waiter still sees a fence that arrives afterwards");
+    expect(adreno::pm4::fenceWaitPoll(&waiter, 1) == adreno::pm4::FenceWait::TimedOut,
+           "a late fence does not revive a timed-out submission");
 
     adreno::pm4::fenceWaitBegin(&waiter, 0xfffffff0u);
     expect(adreno::pm4::fenceWaitPoll(&waiter, 0x00000004u) == adreno::pm4::FenceWait::Complete,

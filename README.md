@@ -41,6 +41,24 @@ UniXNU's menu reads `ConIn`; touch arrives as an absolute pointer, which the men
 consume. That the firmware publishes the buttons as a text input device is measured now,
 not assumed.
 
+### Measure the firmware before staging a kernel
+
+`tools/uefi-probe/` contains a standalone ARM64 EFI diagnostic for the installed firmware.
+It reports the current exception level, GOP geometry and framebuffer address, memory-map
+summary, and available firmware protocols without writing disks, changing firmware variables,
+or calling `ExitBootServices`. See [its build and launch instructions](tools/uefi-probe/README.md).
+This is a diagnostic, not a kernel boot or a working display driver.
+
+The on-device v1 report photographed on 2026-10-26 confirms EL1, a Cortex-A53 at boot
+affinity 0, the 19.2 MHz counter, and a **1080x1920 BGR GOP framebuffer at 0x00400000**.
+The earlier 1440x2560 statements describe native panel geometry, not this installed
+firmware's measured GOP mode. The report is recorded in
+[docs/hardware/2026-10-26-probe-v1.json](docs/hardware/2026-10-26-probe-v1.json).
+The corrected CPU affinities match the firmware's MSM8992 MADT: `0,1,2,3,0x100,0x101`,
+with four A53s and two A57s. DRAM has a zero physical base in the firmware map, but its
+carve-outs and gaps remain reserved; DarwinBoot must allocate a real conventional-memory
+window rather than claiming the advertised 3 GiB as a contiguous usable range.
+
 ### Stage two: the kernel
 
 The menu stage proves the firmware services; the kernel stage adds the loader and a kernel to
@@ -166,8 +184,9 @@ in that volume, so the volume buttons are only a menu input, not a way into a sh
 | ADT | generated and checked on the host (11976 B, six CPUs, NVRAM proxy); not yet handed to a kernel |
 | XNU kernel | compiles and links on 16.x (14,840,992 B, ARM64 `MH_EXECUTE`, sha256 `8b8c633d…`), merged with the 16.7.16 kexts; not loaded |
 | Prelinked kernel | merged by the kernel job: 9 components, 12,882 rebindings, a sparse prelink index; the tool marks it unqualified and it has not run. The kernel stage takes that image without changing it |
-| XNU entry | the GICv2 interrupt path exists, accepts the ADT's `qcom,msm-qgic2` node and boots under QEMU (see "The interrupt controller"); the phone stages a kernel, its ADT sidecar and the loader entry with `scripts/stage-kernel.py`, so the first flash waits on EL1 and on a display driver |
-| Storage driver | written, host-tested, never run on hardware |
+| XNU entry | the on-device EFI probe confirms EL1; the handoff photograph confirms CPU framebuffer writes after ExitBootServices with firmware mappings retained, not XNU entry or GPU acceleration |
+| Storage driver | shared command/PIO engine, 368 simulated transport checks, XNU wrapper wired; updated wrapper has not been ABI-compiled or run on hardware |
+| Native GICv2 | hash-qualified ArmCpu integration and shared core written; asynchronous timer/SGI/SPI tests pass in standalone QEMU with security extensions off/on; no XNU or handset IRQ result |
 | Display (`NativeMdss`) | rung 1 of 6: maps the MDP, MMSS, DSI0 and PHY windows, proves `gdsc_mdss` is on, then reads the MDSS/MDP revisions, the DSI controller's version and enable bits and the firmware's raw video-timing words. Publishes no framebuffer, never run on hardware |
 | GPU (`NativeAdreno418`) | rung 1 of 6 runs: maps the KGSL and MMSS windows, refuses to read a collapsed domain, reads the revision. Rungs 2–4 and the fence half of 5 exist as host-tested cores (`gdscrEnableValue`/`gdscrPollUntilOn`, `IommuCore`, `CommandStream`) and are not wired; rung 6 has a host checker for the addon blob but no plugin built for iOS 16. Built by the archive step, publishes no GPU service, never run on hardware |
 | iOS visual effects | none, and blocked twice over: no display driver (blocker 3) and no Metal device (blocker 7). See "iOS visual effects" |
@@ -177,7 +196,9 @@ in that volume, so the volume buttons are only a menu input, not a way into a sh
 
 | Check | Command | Result |
 | --- | --- | --- |
-| SDHCI core logic (39 checks) | `scripts\test-core.bat` (Windows) or the `g++` line inside it | all pass |
+| SDHCI decoding and transport | `bash scripts/test-storage.sh` | 47 decoding checks and 368 simulated MMIO checks pass under ASan/UBSan |
+| GICv2 core | `bash scripts/test-gicv2.sh` | 168 simulated MMIO checks pass under ASan/UBSan |
+| GICv2 asynchronous exceptions | `bash scripts/build-gicv2-test.sh`, then `python3 scripts/test-gicv2-qemu.py build/gicv2-qemu/gicv2-test.elf` | two rounds each of timer PPI 27, SGI 0 and SPI 40; security extensions off/on; not XNU |
 | Adreno 418 core logic (184 checks) | same runner: the second block compiles and runs `check-adreno-core` | all pass |
 | Display core logic (49 checks) | same runner: the third block compiles and runs `check-mdss-core` | all pass |
 | GPU addon blob (17 self-test cases) | `python3 scripts/check-gpu-addon.py --self-test` | a coherent blob accepted; a bad signature, a mis-sized header, missing padding, a climbing path, a non-executable probe, an executable plist, a bundle without `Info.plist`, an iOS 17 minimum, a macOS build, a non-Mach-O binary, an entitlements plist under `daemons/`, a bad publish file, a malformed client name and a relative primelist entry all refused |
@@ -195,10 +216,14 @@ in that volume, so the volume buttons are only a menu input, not a way into a sh
 | XNU kernel link | same run | links with the board archives |
 | Kernelcache merge | `kernel` job, [run 39973639606](https://github.com/ManGuy-Legend/UniXNU-lumia950/actions/runs/39973639606) | 9 components, 12,882 rebindings, 56,127,488-byte arm64 `MH_EXECUTE` (sha256 `5ccf511d…`), sparse index of 9 headers; the tool marks it unqualified |
 
-The driver's *kernel* half (`NativeSdhci.cpp`) compiles against the recorded kernel ABI,
+The historical driver's *kernel* half (`NativeSdhci.cpp`) compiled against the recorded kernel ABI,
 and the archive holds `NativeSdhci.o` and `SdhciCore.o`, both ARM64 `MH_OBJECT`; the
 archive is not byte-reproducible, because `ar` records member timestamps, so it is not
 quoted as an identity.
+
+Those historical CI results do not qualify the new storage wrapper or ArmCpu GICv2
+integration. Both need a new XNU/iPhoneOS SDK compile and kernel link; local core tests
+and the standalone AArch64 IRQ test do not compile IOKit.
 
 The kernel links too. Upstream calls `native_legacy_display_probe()` from `bsd_init.c`
 without the `XNU_NATIVE_LEGACY_DISPLAY` guard every other call site carries, so the symbol
@@ -364,7 +389,15 @@ The firmware leaves the controller clocked, powered and the card selected. The d
 therefore does not run CMD0/CMD1/CMD2/CMD3, does not touch the clock or power registers, and
 does not reset the controller — a full reset would discard the only state that makes the
 handoff work. It resets the command and data state machines, then finds out which relative
-card address the firmware used by trying CMD13 at RCA 1, 2 and 0.
+card address the firmware used by trying CMD13 at RCA 1 and 2. RCA zero is not a card address.
+
+The command/data path now uses the shared `PollingHost` core: explicit-width ordered
+MMIO, bounded reset/command/buffer/completion waits, controller and R1 error checks,
+correct SDHCI R2 normalization, and deselect/read-CSD/reselect sequencing. The warm path
+requires a sector-addressed eMMC user partition with 512-byte sectors; it rejects a boot
+partition, RPMB, command-queue mode, and unsupported sector sizes without switching them.
+A failed transfer invalidates the medium and never reports partial FIFO data as a
+successful block. See [storage bring-up](docs/storage-bringup.md) for evidence and limits.
 
 Bring-up rungs, in order, each with a distinct failure signature:
 
@@ -436,13 +469,17 @@ checker recomputes that checksum rather than trusting the generator. `unique-chi
 `chip-id` are required because anything calling `gethostuuid()` blocks forever without them;
 the checker refuses a tree that omits them unless explicitly told to allow it.
 
-What the tree does not solve: `intc` describes a real GICv2 while ArmCpu's interrupt path is
-GICv3-only (blocker 2), PSCI is the MSM8992 subset without SYSTEM_OFF/SYSTEM_RESET
-(blocker 4), and no display node is emitted because there is no MDSS driver to match it.
+What the tree does not solve: the new ArmCpu GICv2 integration still needs native-kernel
+and handset validation (blocker 2), PSCI is the MSM8992 subset without SYSTEM_OFF/SYSTEM_RESET
+(blocker 4), and the MDSS node currently matches only a register-identity driver.
 
 ## The GPU (Adreno 418)
 
 MSM8992's GPU is an **Adreno 418**, an a4xx part, and the generation decides everything here.
+The new GPU backend, pinned firmware, tests, and remaining path to a real accelerated iOS UI
+are documented in [GPU bring-up](docs/gpu-bringup.md). The default driver remains read-only:
+it checks both power domains and all three clock branches before accessing GPU registers.
+
 Upstream's [Adreno 740 driver](../unixnu/docs/drivers/native-adreno.md) drives a6xx/a7xx
 silicon: a GMU that boots firmware and owns power, a shared 4 KiB SMMU through `ArmSmmu4K`,
 and a command stream from `AdrenoPM4` whose state packets are the ones A6xx and later take.
@@ -490,20 +527,21 @@ it, and do not reset what cannot be rebuilt.
 | Rung | What it proves | State |
 | --- | --- | --- |
 | 1 identity | the windows map, the domains are on, the revision answers | written, host-tested, and the only rung a driver runs |
-| 2 power | RPM vote, GDSC state machine, OxiLi clocks and the bus at a level | the GDSC half is wired: `start()` clears SW_COLLAPSE and polls PWR_ON on both domains before any read, refusing under hardware control; the RPM vote and the OxiLi clocks are not written, so a cold domain still stays cold and the log says so |
-| 3 smmu | 4 KiB page tables and the contexts a buffer is reached through | page-table encoder written and host-tested (`IommuCore`); the SMMU window at `0xfdb10000` and its contexts are not wired |
-| 4 ring | CP ring, write pointer, fences | `ringUsedDwords`, `ringFreeDwords`, `ringAdvance` written and host-tested; `CommandStream` builds the CP packets, paces the ring and refuses a submission that does not fit; unwired |
-| 5 blit | PM4 that clears or copies, confirmed by a fence | the confirming half is written and host-tested (`writeSubmissionTail`, `fenceWaitPoll`); the clear itself is not — see below |
-| 6 metal | the Metal plugin over Metal, metal2vulkan, Turnip and IR3 | no plugin for this generation; the addon it travels in is checked on the host (`scripts/check-gpu-addon.py`) |
+| 2 power | RPM vote, GDSC state machine, OxiLi clocks and the bus at a level | read-only rail/clock qualification is shared with the EFI probe; cold power, RPM and parent-clock votes remain unimplemented |
+| 3 smmu | 4 KiB page tables and the contexts a buffer is reached through | `LpaeCore` and register-backed `SmmuContext` are implemented and simulation-tested, but not activated by the native driver or tested on the handset |
+| 4 ring | CP ring, write pointer, fences | `Submission` implements firmware download, ME initialization, ring wrap, synchronization, faults and bounded waits through hardware callbacks; no on-phone execution yet |
+| 5 blit | PM4 that clears or copies, confirmed by a fence | a bounded CP memory-write fill and full data verification exist as a bring-up workload; this is not yet a blitter or shader renderer |
+| 6 metal | compatible iOS graphics/shader integration | no plugin for A418/iOS 16; Turnip does not support this generation |
 
-A written core is not a working rung: nothing in the driver programs the GDSC, the page tables
-or the ring, because each needs the rung below it to have run on a phone first. The distinction
+A written backend is not a working rung: the default native driver activates neither the
+context nor submission backend until its hardware prerequisites are qualified. The distinction
 is a constant (`kCoreRung`) and a test, not a sentence.
 
 Rung 6 is where upstream's work is thickest, but not as it stands: upstream's
 `build-adreno-metal-plugin.py` builds for ARM64 iOS 17 while this board's userland is
-16.7.16, and Turnip's a4xx support is the other half of the question. Both are recorded as
-open, not assumed.
+16.7.16. More fundamentally, Mesa explicitly excludes a4xx from Turnip: that Vulkan route
+is unavailable, not merely untested. A compatible A4xx rendering/shader path and the iOS
+Metal/IOSurface integration remain unwritten.
 
 ### The command stream (rungs 4 and 5)
 
@@ -669,6 +707,26 @@ seen.
 
 ## The interrupt controller (GICv2)
 
+### Native UniXNU integration
+
+`scripts/build-arm-driver.py ArmCpu` now prepares a hash-qualified source copy with
+`drivers/NativeGicV2/ArmCpu.patch` and compiles `GicV2Core.cpp` into the same archive.
+It recognizes the Lumia compatible list, maps the GICv2 CPU interface, routes the
+virtual timer and self-IPI through MMIO, retains raw IAR tokens for EOI, and adds
+GICv2 SPI configuration. CPU target bits come from hardware, not logical CPU numbers.
+The existing GICv3 implementation is retained as the other branch.
+
+Standalone QEMU tests take real asynchronous AArch64 exceptions for timer, SGI and
+SPI twice, with security extensions disabled and enabled. This is not an XNU boot.
+The new IOKit integration has not been compiled against the iPhoneOS SDK or tested on
+the Lumia. GICv2 secondary CPU startup is deliberately unqualified and refused.
+See [native GICv2 bring-up](docs/native-gicv2.md).
+
+### Earlier HackiOS route
+
+The following notes describe the separate HackiOS patch and its historical results,
+not validation of the native ArmCpu build.
+
 The Lumia's controller is a GIC-400: GICv2, memory-mapped, with no redistributors. The
 HackiOS kernel's driver (`osfmk/arm64/gic_v3_irq.c`) was GICv3-only — the CPU interface
 through the `ICC_*_EL1` system registers and one redistributor frame per core — so a GICv2
@@ -726,55 +784,46 @@ already in the ADT generator above, so the entry is a table row, not a driver.
    volume-key input, and no `UniXNUDxe` entry: `SplashApp`'s `DiscoverAndBootApp` finds the
    removable-media name. `example = true` stays until the kernel route opens, not because
    the payload is unrun.
-2. **The interrupt controller is GICv2** (`qcom,msm-qgic2`, no redistributors). The HackiOS
-   kernel's interrupt driver now handles both: the version is read from the device tree and
-   checked against `GICD_PIDR2`, the per-CPU bring-up uses the redistributor frames on a v3 and
-   the memory-mapped GICC frame on a v2, and the SPI path targets by `GICD_IROUTER` or by
-   `GICD_ITARGETSR` accordingly. It boots QEMU with `-M virt,gic-version=2` to the lock screen
-   and still boots it with `gic-version=3`, and it reads the controller out of the whole
-   `compatible` list, so the `qcom,msm-qgic2` node this repository's ADT generator writes is
-   one it accepts; see "The interrupt controller (GICv2)". What is left is a display driver
-   before anything can be seen, and — on the phone — the loader's EL1 requirement, which the
-   first flash either satisfies or reports (see "Stage two: the kernel"). The HackiOS
-   loader's own synthesized tree would still need an MSM8992 platform entry, but the phone
-   does not use that loader.
+2. **The interrupt controller is GICv2** (`qcom,msm-qgic2`, no redistributors). The native
+   ArmCpu integration and shared core are now written, and standalone QEMU delivers timer,
+   software and peripheral IRQs with security extensions off/on. This does not qualify the
+   XNU wrapper: a new SDK build, native-kernel timer test and handset IRQ result remain.
+   First bring-up is boot-CPU-only; neither the second cluster nor GICv2 remote IPIs are
+   enabled. The earlier HackiOS patch is a different implementation, not proof that this
+   kernel boots. The on-device EFI probe established EL1, not XNU entry.
 3. **Display: rung 1 of 6, and the panel is still unowned.** `NativeMdss` maps the windows,
    proves the mdss domain is on and reads what the firmware left (MDSS/MDP/DSI revisions, the
    DSI enable bits, the raw timing words), and it publishes no framebuffer. What is still
    missing is the part that cannot be guessed: the DSI PHY's PLL table (rung 3) and the
    panel's own init sequence. Lumia950XLPkg says its framebuffer depends on the stock
-   Qualcomm UEFI and that MDP is not fully implemented, so after `ExitBootServices` there is
-   no output until rung 4 scans something out. With no serial console either, this is the
+   Qualcomm UEFI and that MDP is not fully implemented. The EFI probe measures a linear
+   1080x1920 BGR framebuffer at 0x00400000. The user's later handoff photograph confirms
+   raw framebuffer writes after `ExitBootServices` with firmware MMU mappings retained;
+   it does not prove animation, XNU's mappings, or the native driver. With no serial console,
+   taking ownership of that display from XNU remains the
    single most expensive missing piece, and it gates every visual effect on this board (see
    "iOS visual effects").
 4. **PSCI is HVC and incomplete** on 8992/8994: no `SYSTEM_OFF`, no `SYSTEM_RESET`. The ADT
    tool takes a `psci_method`, so this is expressible, but SMP bring-up is unproven.
-5. **No macOS here.** The kernel step needs Xcode; use the upstream macOS CI workflow or a
-   Mac. `unixnu` on Windows can plan, not build.
-6. **No hardware in this loop.** Every remaining rung needs the phone.
-7. **The GPU stops at rung 1, and the rungs above it are arithmetic, not behavior.**
-   `NativeAdreno418` maps the windows, brings a collapsed domain up through its GDSC if the
-   hardware will let it, and reads the revision. Rung 3's page tables, rung 4's ring
-   arithmetic and packet builders and rung 5's fence wait exist as host-tested cores; no
-   driver programs any of them, and rung 5's clear is not written. Rung 2 still needs the RPM
-   (SMD resource requests) and the OxiLi clocks, without which the GDSC write does not take
-   effect and the log says so; rung 3 needs the SMMU contexts at `0xfdb10000`.
-8. **Rung 4 needs firmware this repository does not carry.** An a4xx command processor runs
-   microcode: Linux's `a4xx_gpu.c` loads PM4 into `CP_ME_RAM` and the PFP into
-   `CP_PFP_UCODE` before it programs a ring, then clears `ME_HALT`. `CommandStream` has the
-   load plan (version word checked, offset and write count pinned by the host test) but no
-   image to load, so a ring programmed now would be read by a CP that is not running. Two questions on
-   the Metal side are named rather than assumed: upstream's plugin build targets iOS 17 while
-   this board runs 16.7.16, and Turnip's a4xx support has to cover the AIR the 16.7.16
-   QuartzCore ships. Adreno 418's command stream is also its own — the `AdrenoPM4` kit
-   upstream uses is A6xx-shaped, not a4xx, which is why the a4xx packets here are written from
-   Linux's `a4xx_gpu.c` instead.
+5. **The XNU build needs Xcode and the iPhoneOS SDK.** This Mac currently has Command Line
+   Tools but no verified iPhoneOS SDK; the standalone EFI builds do not require that SDK.
+6. **Hardware feedback is available for the EFI path.** The on-device probe ran, but each
+   remaining native-driver rung still needs a corresponding phone measurement.
+7. **The GPU's hardware proof still stops before submission.** The default driver's
+   read-only identity path checks rail and clock state. Mapping, context, firmware-download,
+   submission and verification backends are now implemented, host-tested, and cross-compiled
+   for the EFI target, but the hardware power/routing/ownership prerequisites and actual
+   command completion still need on-device qualification. See [GPU bring-up](docs/gpu-bringup.md).
+8. **Firmware is obtainable; Metal remains a separate port.** `scripts/adreno-firmware.py`
+   fetches pinned PM4/PFP images selected by Qualcomm's A418 driver. Their valid zero
+   container headers are supported. There is still no compatible iOS 16/A418 Metal plugin,
+   and Turnip excludes A4xx entirely; a successful CP memory fill would not solve that gap.
 
 ## The CI jobs
 
 > Before touching anything here, read
 > [README_BEFORESTARTING!!!!!!!!!!!!!!.md](README_BEFORESTARTING!!!!!!!!!!!!!!.md). There is no
-> macOS on this machine: the `kernel` job is the only thing that compiles a driver, and a
+> verified iPhoneOS SDK on this machine: the `kernel` job compiles the IOKit driver, and a
 > green `validate` does not mean a driver built.
 
 There is no Mac here, and the kernel step needs one — Xcode plus the iphoneos SDK. Upstream

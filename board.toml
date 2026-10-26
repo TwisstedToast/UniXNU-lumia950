@@ -117,12 +117,13 @@ roots = [
 title = "iOS 16.7.16"
 # One verbose line. DarwinBoot copies it into boot_args unchanged and refuses more than 1000
 # bytes; `--args` replaces it for one staging run without editing this file.
-kernel_args = ["-v"]
+kernel_args = ["-v", "cpus=1"]
 # 3 GiB: the figure the ADT generator and its checker were exercised with in CI, not a
 # measurement from this phone. The firmware's own memory map still has to be read on the
 # handset — reserved regions carve into the DRAM the OS may own — so treat this as the first
 # value to confirm on hardware, not as a claim about the device.
 dram_size = 0xC0000000
+dram_base = 0
 # The menu's countdown stays in payload/EFI/UniXNU/unixnu.toml, where the panel stage already
 # has it, so there is one place to change it. A staged tree makes the kernel the default
 # entry, so a boot test needs no key press.
@@ -132,9 +133,9 @@ dram_size = 0xC0000000
 # TrustCache}`). The validate job runs the generator and the checker, including the checker's
 # defect self-test.
 tool = "scripts/make-lumia950-adt.py"
-# The generator's default list: two cores in cluster 0, four in cluster 1, boot CPU first. A
+# The firmware MADT's list: four A53s in cluster 0, two A57s in cluster 1, boot CPU first. A
 # phone that reports a different boot core is a one-line change here, not a driver change.
-cpu_regs = "0,1,0x100,0x101,0x102,0x103"
+cpu_regs = "0,1,2,3,0x100,0x101"
 # PSCI on 8992/8994 is conveyed over HVC and it is incomplete: no SYSTEM_OFF and no
 # SYSTEM_RESET, which is why the menu's two power actions are firmware ResetSystem calls.
 psci_method = "hvc"

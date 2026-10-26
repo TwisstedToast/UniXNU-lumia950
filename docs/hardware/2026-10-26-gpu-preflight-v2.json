@@ -1,0 +1,53 @@
+{
+  "device": "Microsoft Lumia 950 (MSM8992 / expected Adreno 418)",
+  "evidence": {
+    "kind": "user-supplied photograph and independently retrieved handset report",
+    "filename": "PXL_20261026_165103658.jpg",
+    "photo_sha256": "2452bbba4df9b11b3d22789608435aca0e67b8fe46aabaf7a691dd9199fb56d5",
+    "date": "2026-10-26",
+    "application": "LumiaGpuProbe.efi v2",
+    "application_sha256": "85e964d1e2d22f61ca1e8ca9eff4ecfa3ddefcd202f12480eff7c5d30494335f"
+  },
+  "observed": {
+    "platform": "PLATFORM_MSM8992: six expected CPUs and GICv2 verified.",
+    "FIRMWARE_CLOCK_STATUS": "0x0000000000000000",
+    "FIRMWARE_CLOCK_PROTOCOL": "PRESENT",
+    "FW_CORE_CLOCK": "NOT_REGISTERED",
+    "FW_AHB_CLOCK": "NOT_REGISTERED",
+    "FW_TIMER_CLOCK": "NOT_REGISTERED",
+    "GDSCR_GX": "0x0000000000282001",
+    "GDSCR_CX": "0x0000000000282001",
+    "CORE_CBCR": "0x0000000080000ff0",
+    "AHB_CBCR": "0x0000000080008000",
+    "TIMER_CBCR": "0x0000000080000000",
+    "GPU_STATE": "POWER_DOMAIN_OFF",
+    "gpu_and_smmu_windows": "NOT touched",
+    "REPORT_STAGE": "COMPLETE",
+    "REPORT_EFI_STATUS": "0x0000000000000000"
+  },
+  "disk_inspection_after_return_to_mass_storage": {
+    "volume_uuid": "455FB1CB-F473-3654-A26A-8E96BB80B44C",
+    "partition_uuid": "8183040A-8B44-4592-92F7-C6D9EE0560F7",
+    "report_path": "EFI/LumiaProbe/gpu-report-00.txt",
+    "captured_report": "out/gpu-preflight-v2/hardware/gpu-report-00.txt",
+    "report_bytes": 628,
+    "report_sha256": "eb6c4dc7b84b56b0b20a92651f7ac277332f7d7d5b4a4120f646ec341a601680",
+    "report_matches_photographed_measurements": true,
+    "fallback_and_named_application_sha256": "85e964d1e2d22f61ca1e8ca9eff4ecfa3ddefcd202f12480eff7c5d30494335f",
+    "legacy_report_bytes": 0,
+    "legacy_report_preserved": true
+  },
+  "interpretation": [
+    "The v2 report writer succeeded on actual handset FAT media, and the persisted content was read back.",
+    "The firmware protocol exists, but clk_get returned null for all three specific queried names.",
+    "All three sampled branches have halt bit 31 set and software enable bit 0 clear.",
+    "Both power domains remain collapsed; no GPU identity or SMMU register reads were attempted.",
+    "AHB_CBCR differs from v1: 0x80008000 here versus 0x00008000 before. These are distinct boot observations, not a measured transition caused by the diagnostic."
+  ],
+  "not_proven": [
+    "Whether other clock aliases or other firmware power-control interfaces exist.",
+    "A complete regulator, parent-clock, interconnect or power-domain initialization sequence.",
+    "GPU identity, GPU execution, rendering or Metal.",
+    "Actual GIC interrupt delivery, XNU entry or iOS userland."
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "device": "Microsoft Lumia 950",
+  "evidence": {
+    "kind": "user-supplied photograph of an on-device EFI report",
+    "filename": "PXL_20261026_122000055.jpg",
+    "date": "2026-10-26",
+    "application": "LumiaProbe.efi v1",
+    "application_sha256": "fbf9e4c469871d3c516e61a8b0e5ebf8459cf562deba21e3064293b2bb2e2b41"
+  },
+  "measured": {
+    "current_el": 1,
+    "midr_el1": "0x410fd033",
+    "mpidr_el1": "0x80000000",
+    "counter_frequency_hz": 19200000,
+    "gop": {
+      "width": 1080,
+      "height": 1920,
+      "pixels_per_scanline": 1080,
+      "framebuffer_base": "0x00400000",
+      "framebuffer_bytes": 8294400,
+      "pixel_format": 1
+    },
+    "memory_descriptors": 47,
+    "conventional_mib": 2806,
+    "loader_and_boot_services_mib": 113,
+    "runtime_mib": 5,
+    "largest_free_region_base": "0x80000000",
+    "largest_free_region_mib": 1536,
+    "filesystem_handles": 7,
+    "block_io_handles": 42,
+    "absolute_pointer_handles": 2
+  },
+  "not_proven": [
+    "XNU entry or iOS userland boot",
+    "framebuffer scanout after ExitBootServices",
+    "secondary CPU startup",
+    "contiguous ownership of the phone's advertised 3 GiB",
+    "runtime peripheral drivers"
+  ],
+  "firmware_references": [
+    "https://github.com/WOA-Project/Lumia950XLPkg/blob/master/AcpiTables/8992/src/MADT.asl",
+    "https://github.com/WOA-Project/Lumia950XLPkg/blob/master/AcpiTables/8992/src/PPTT.aslc",
+    "https://github.com/WOA-Project/Lumia950XLPkg/blob/master/Lumia950.dsc",
+    "https://github.com/WOA-Project/Lumia950XLPkg/blob/master/Include/Configuration/DeviceMemoryMap.h"
+  ]
+}

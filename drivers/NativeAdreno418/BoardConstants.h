@@ -40,8 +40,7 @@
 // answer and that is rung 2, not a reason to read the GPU window instead.
 //
 // The GPU's own register offsets are dword indices from freedreno's register
-// database (Mesa, src/freedreno/registers/adreno/a4xx.xml), which is also what
-// Turnip compiles against on this generation:
+// database (Mesa, src/freedreno/registers/adreno/a4xx.xml):
 //
 //   RBBM_HW_VERSION      0x0000    RBBM_STATUS        0x0191
 //   RBBM_HW_CONFIGURATION 0x0002   CP_RB_BASE         0x0200

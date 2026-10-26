@@ -1,0 +1,41 @@
+{
+  "device": "Microsoft Lumia 950 (MSM8992 / Adreno 418)",
+  "evidence": {
+    "kind": "user-supplied photograph",
+    "filename": "PXL_20261026_155940608.jpg",
+    "photo_sha256": "5768fa4214a2571c9d6f44bb7dd7ee916e2d3f9c3ea660936ad8a054462a3e85",
+    "date": "2026-10-26",
+    "application": "LumiaGpuProbe.efi v1",
+    "application_sha256": "fc4f14bb7381eae1ae55cb33573c74e1ed9c5f1e86e414ef5eaadba1efd72f02"
+  },
+  "observed": {
+    "platform": "PLATFORM_MSM8992: six expected CPUs and GICv2 verified.",
+    "GDSCR_GX": "0x0000000000282001",
+    "GDSCR_CX": "0x0000000000282001",
+    "CORE_CBCR": "0x0000000080000ff0",
+    "AHB_CBCR": "0x0000000000008000",
+    "TIMER_CBCR": "0x0000000080000000",
+    "GPU_STATE": "POWER_DOMAIN_OFF",
+    "gpu_and_smmu_windows": "NOT touched",
+    "report_save_status": "0x8000000000000002 (EFI_INVALID_PARAMETER)"
+  },
+  "disk_inspection_after_return_to_mass_storage": {
+    "volume_uuid": "455FB1CB-F473-3654-A26A-8E96BB80B44C",
+    "report_path": "EFI/LumiaProbe/gpu-report-v1.txt",
+    "report_bytes": 0,
+    "report_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "fallback_sha256": "fc4f14bb7381eae1ae55cb33573c74e1ed9c5f1e86e414ef5eaadba1efd72f02"
+  },
+  "interpretation": [
+    "Both domains have POWER_ON bit 31 clear and software collapse bit 0 set.",
+    "Core and timer clocks have halt bit 31 set and enable bit 0 clear.",
+    "AHB halt bit 31 is clear, but its software enable bit 0 is also clear.",
+    "The empty report proves v1 found its filesystem and created the file; the exact later failing operation was not logged."
+  ],
+  "not_proven": [
+    "Working GIC interrupts: the platform check only validates ACPI topology.",
+    "GPU identity, submission, rendering, acceleration, or a defective GPU.",
+    "Firmware GPU clock registry availability or a qualified power-on sequence.",
+    "XNU entry, iOS userland, wallpaper or Metal."
+  ]
+}

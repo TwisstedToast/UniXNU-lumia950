@@ -1,0 +1,21 @@
+{
+  "device": "Microsoft Lumia 950",
+  "evidence": {
+    "kind": "user-supplied photograph",
+    "filename": "PXL_20261026_134638263.jpg",
+    "date": "2026-10-26",
+    "application": "LumiaHandoff.efi",
+    "application_sha256": "c7b1569099af9ac41af1424cf161b7b03afa8078532488e2536e2aba2f678b2d"
+  },
+  "observed": [
+    "Green POST EBS OK status and application text",
+    "Raw framebuffer writes visible after successful ExitBootServices",
+    "Firmware MMU mappings retained by the application"
+  ],
+  "not_proven": [
+    "Heartbeat animation, because the evidence is a still photograph",
+    "GPU execution or acceleration",
+    "XNU page tables or kernel entry",
+    "iOS userland or compositor operation"
+  ]
+}

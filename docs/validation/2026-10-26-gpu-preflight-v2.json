@@ -1,0 +1,49 @@
+{
+  "date": "2026-10-26",
+  "hardware_input": "../hardware/2026-10-26-gpu-preflight-v1.json",
+  "hardware_confirmation": "../hardware/2026-10-26-gpu-preflight-v2.json",
+  "application": {
+    "name": "LumiaGpuProbe.efi v2",
+    "target": "aarch64-pc-windows-msvc / EFI_APPLICATION",
+    "bytes": 9216,
+    "sha256": "85e964d1e2d22f61ca1e8ca9eff4ecfa3ddefcd202f12480eff7c5d30494335f",
+    "hardware_writes": "none: no GPU, clock, power, SMMU or firmware-variable writes",
+    "disk_writes": "new report only, on the loaded image's own filesystem",
+    "firmware_clock_operation": "registry lookup only, not enable or rate programming"
+  },
+  "local_tests": {
+    "report_store_and_clock_lookup": "409 checks, ASan/UBSan, mock UEFI protocols including the v2 clock lookup result",
+    "gpu_backend": "304 checks, ASan/UBSan, simulated MMIO including both photographed AHB states",
+    "microcode_plan_regression": "invalid replacements clear all stale firmware-plan fields; no previous image can survive a failed planning call",
+    "a418_me_init_regression": "payload word 14 is 0x20000000 as in pinned Qualcomm a3xx_rb_init, used by the A4xx callback; simulated ring checked",
+    "gpu_tools": "7 Python tests",
+    "probe_core": "46 checks, ASan/UBSan",
+    "framebuffer_core": "74 checks, ASan/UBSan",
+    "fat16_decoder": "6 Python tests with negative geometry, chain, size and long-filename cases",
+    "qemu_gic2_and_gic3": "non-Lumia MMIO refusal and successful return",
+    "read_only_fat_gic2_and_gic3": "CREATE_FILE / EFI_WRITE_PROTECTED",
+    "raw_fat16_gic2_and_gic3": "two boots each; exact saved transcript bytes; prior reports and all original files preserved",
+    "build_image_checks": "all three EFI applications pass AArch64 PE entry/section/subsystem validation",
+    "workflow": "YAML parsed; 33 run blocks pass bash -n; Python ASTs parsed; git diff --check passed"
+  },
+  "emulator": {
+    "qemu_version": "10.2.0",
+    "firmware": "edk2-stable202408-prebuilt.qemu.org",
+    "write_test_medium": "private sparse raw image converted from a private ESP copy, never a physical volume",
+    "writable_vvfat_observation": "directory-backed fat:rw produced incorrect report contents; the raw block-image test passes and is the retained persistence test"
+  },
+  "unchanged_applications": {
+    "LumiaProbe.efi": "fbf9e4c469871d3c516e61a8b0e5ebf8459cf562deba21e3064293b2bb2e2b41",
+    "LumiaHandoff.efi": "c7b1569099af9ac41af1424cf161b7b03afa8078532488e2536e2aba2f678b2d"
+  },
+  "limits": {
+    "github_actions_run": false,
+    "new_iokit_driver_compile": false,
+    "v2_handset_execution_observed": true,
+    "v2_handset_report_persistence_and_readback": true,
+    "gpu_power_transition_attempted": false,
+    "gpu_workload_submitted_on_handset": false,
+    "xnu_or_ios_boot": false,
+    "ios_hardware_acceleration": false
+  }
+}

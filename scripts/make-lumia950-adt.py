@@ -22,14 +22,13 @@ README.md and from the MSM8992 descriptions used by mainline Linux. What is
 *not* known is recorded rather than papered over:
 
   * `intc` describes the real GICv2 (distributor `0xf9000000`, CPU interface
-    `0xf9002000`). ArmCpu's interrupt path in this tree is GICv3-only, so
-    interrupts will not be delivered until that is written. The node is still
-    correct: the controller is a GICv2.
+    `0xf9002000`). The hash-qualified ArmCpu GICv2 integration is now written,
+    with standalone QEMU IRQ tests. XNU and handset validation remain pending.
   * `psci` says `arm,psci-1.0` because that is the compatible XNU's ARM
     platform expects, but MSM8992 implements a subset over HVC with no
     SYSTEM_OFF and no SYSTEM_RESET. See README.md, blocker 4.
-  * No display node is emitted: there is no MDSS driver, and a node naming
-    hardware no driver understands would be worse than the absence.
+  * The display node matches NativeMdss's register-identity driver, not a
+    framebuffer provider or a working iOS display.
   * The GPU node is emitted because a driver now reads it (`NativeAdreno418`,
     rung 1). Its window and the MMSS window beside it are from Qualcomm's
     msm-3.10 device tree, not from mainline: see drivers/NativeAdreno418/
@@ -54,7 +53,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 # MSM8992 (Snapdragon 808) constants. README.md, "The ADT node" and the
 # register table, carries the sources for the SDHCI windows.
-DRAM_BASE = 0x80000000
+DRAM_BASE = 0
 TIMEBASE_FREQUENCY = 19_200_000
 GIC_DISTRIBUTOR = (0xF9000000, 0x1000)
 GIC_CPU_INTERFACE = (0xF9002000, 0x1000)
@@ -79,8 +78,12 @@ MDSS_WINDOWS = (
     (0xFD828000, 0x108),     # mmss_misc_phys
 )
 MDSS_INTERRUPT = 83
-# MPIDR affinity values: two A57 cores in cluster 0, four A53 cores in cluster 1.
-DEFAULT_CPU_REGS = "0,1,0x100,0x101,0x102,0x103"
+# MPIDR affinities from Lumia950XLPkg's MSM8992 MADT: four A53s, then two A57s.
+DEFAULT_CPU_REGS = "0,1,2,3,0x100,0x101"
+CPU_COMPATIBLES = {
+    0: "arm,cortex-a53", 1: "arm,cortex-a53", 2: "arm,cortex-a53", 3: "arm,cortex-a53",
+    0x100: "arm,cortex-a57", 0x101: "arm,cortex-a57",
+}
 NVRAM_BANK_SIZE = 8192
 NVRAM_COMMON_DATA = 2048
 
@@ -172,14 +175,15 @@ def parse_cpu_regs(value: str) -> list[int]:
 
 
 def cpu_node(index: int, reg: int) -> bytes:
-    cluster = reg >> 8
+    if reg not in CPU_COMPATIBLES:
+        raise ValueError(f"unsupported MSM8992 CPU affinity {reg:#x}")
     return node(
         f"cpu{index}",
         [
             ("state", string("running" if index == 0 else "waiting")),
             ("reg", u32(reg)),
             ("device_type", string("cpu")),
-            ("compatible", string("arm,cortex-a57" if cluster == 0 else "arm,cortex-a53")),
+            ("compatible", string(CPU_COMPATIBLES[reg])),
             ("timebase-frequency", u32(TIMEBASE_FREQUENCY)),
         ],
     )
@@ -410,7 +414,7 @@ def main() -> int:
     if args.unique_chip_id is None or args.chip_id is None:
         print("warning: no chip identity; XNU seeds IOPlatformUUID from it and gethostuuid() blocks without it",
               file=sys.stderr)
-    print("note: intc is a GICv2 and ArmCpu's interrupt path is GICv3-only (README blocker 2)", file=sys.stderr)
+    print("note: ArmCpu GICv2 integration still needs an XNU build and handset IRQ validation", file=sys.stderr)
     if cpus > 1 and args.psci_method != "none":
         print("note: MSM8992 PSCI is a subset over HVC with no SYSTEM_OFF/SYSTEM_RESET (README blocker 4)",
               file=sys.stderr)

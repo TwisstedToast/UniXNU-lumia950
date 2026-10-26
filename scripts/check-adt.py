@@ -224,7 +224,7 @@ def _check_chosen(chosen: Node, errors: list[str], notes: list[str], allow_missi
             errors.append(f"/chosen has no {name}")
         elif len(value) != length:
             errors.append(f"/chosen/{name} is {len(value)} bytes, expected {length}")
-        elif struct.unpack("<Q", value)[0] == 0:
+        elif name == "dram-size" and struct.unpack("<Q", value)[0] == 0:
             errors.append(f"/chosen/{name} is zero")
 
     seed = chosen.value("random-seed")
@@ -346,6 +346,7 @@ def _check_cpus(cpus: Node, errors: list[str]) -> None:
         errors.append("/cpus has no CPU nodes")
         return
     running = 0
+    affinities = set()
     for index, cpu in enumerate(cpus.children):
         expected = f"cpu{index}"
         if cpu.name != expected:
@@ -353,6 +354,20 @@ def _check_cpus(cpus: Node, errors: list[str]) -> None:
         reg = cpu.value("reg")
         if reg is None or len(reg) != 4:
             errors.append(f"/cpus/{cpu.name}/reg is not one 32-bit affinity value")
+        else:
+            affinity = struct.unpack("<I", reg)[0]
+            if affinity in affinities:
+                errors.append(f"/cpus/{cpu.name} repeats affinity {affinity:#x}")
+            affinities.add(affinity)
+            if affinity in (0, 1, 2, 3):
+                expected_compatible = b"arm,cortex-a53\0"
+            elif affinity in (0x100, 0x101):
+                expected_compatible = b"arm,cortex-a57\0"
+            else:
+                expected_compatible = None
+                errors.append(f"/cpus/{cpu.name} has unsupported MSM8992 affinity {affinity:#x}")
+            if expected_compatible is not None and cpu.value("compatible") != expected_compatible:
+                errors.append(f"/cpus/{cpu.name}/compatible disagrees with MSM8992 affinity {affinity:#x}")
         state = cpu.value("state")
         if state is None:
             errors.append(f"/cpus/{cpu.name} has no state")
@@ -468,7 +483,7 @@ def _check_arm_io(arm_io: Node, errors: list[str], notes: list[str]) -> None:
         if reg is None or len(reg) % 16 or len(reg) < 16:
             errors.append("/arm-io/intc/reg does not describe whole address/size windows")
         if b"gic-2" in compatible or b"qgic2" in compatible:
-            notes.append("/arm-io/intc is a GICv2; ArmCpu's interrupt path in this tree is GICv3-only (blocker 2)")
+            notes.append("/arm-io/intc is a GICv2; native ArmCpu integration needs an SDK build and handset IRQ validation")
 
     sdhci = next((child for child in arm_io.children
                   if (child.value("compatible") or b"").find(b"qcom,sdhci-msm-v4") >= 0), None)
@@ -520,8 +535,15 @@ def self_test() -> int:
     good = module.build_tree(dram_size=0xC0000000, unique_chip_id=0x1122334455667788,
                              chip_id=0x8015, seed=b"\x5a" * 64)
     notes = validate(parse(good), allow_missing_identity=False)
+    good_tree = parse(good)
+    assert struct.unpack("<Q", good_tree.child("chosen").value("dram-base"))[0] == 0
+    assert [struct.unpack("<I", cpu.value("reg"))[0]
+            for cpu in good_tree.child("cpus").children] == [0, 1, 2, 3, 0x100, 0x101]
+    assert good_tree.child("cpus").children[0].value("compatible") == b"arm,cortex-a53\0"
+    rejected_count = 0
 
     def expect_failure(data: bytes, needle: str, label: str) -> None:
+        nonlocal rejected_count
         try:
             validate(parse(data), allow_missing_identity=False)
         except Error as error:
@@ -529,12 +551,30 @@ def self_test() -> int:
                 raise SystemExit(f"{label}: rejected, but for the wrong reason: {error}") from None
         else:
             raise SystemExit(f"{label}: was accepted")
+        rejected_count += 1
 
     expect_failure(good[:12], "truncated", "truncated header")
 
     tree = parse(good)
     tree.children = [child for child in tree.children if child.name != "cpus"]
     expect_failure(encode(tree), "/cpus", "missing /cpus")
+
+    tree = parse(good)
+    cpu = tree.child("cpus").children[0]
+    cpu.prop("compatible").value = b"arm,cortex-a57\0"
+    expect_failure(encode(tree), "compatible", "boot A53 mislabeled as A57")
+
+    tree = parse(good)
+    tree.child("cpus").children[-1].prop("reg").value = struct.pack("<I", 0x103)
+    expect_failure(encode(tree), "MSM8992 affinity", "nonexistent CPU affinity")
+
+    tree = parse(good)
+    tree.child("cpus").children[1].prop("reg").value = struct.pack("<I", 0)
+    expect_failure(encode(tree), "repeats affinity", "duplicate CPU affinity")
+
+    tree = parse(good)
+    tree.child("chosen").prop("dram-size").value = struct.pack("<Q", 0)
+    expect_failure(encode(tree), "dram-size", "zero DRAM size with valid zero base")
 
     tree = parse(good)
     chosen = tree.child("chosen")
@@ -590,7 +630,7 @@ def self_test() -> int:
     padded[prop.value_offset + len(prop.value)] = 0xFF
     expect_failure(bytes(padded), "padding", "nonzero padding")
 
-    print(f"self-test ok: the good tree passes ({len(notes)} notes) and 9 mutants are rejected")
+    print(f"self-test ok: the good tree passes ({len(notes)} notes) and {rejected_count} mutants are rejected")
     return 0
 
 

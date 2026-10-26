@@ -64,6 +64,7 @@ jobs:
           board = tomllib.loads(pathlib.Path("board.toml").read_text())
           assert board["board"]["name"] == "lumia950", board["board"]
           assert board["kernel"]["defconfig"] == "lumia950_defconfig"
+          assert "cpus=1" in board["payload"]["kernel_args"]
           config = pathlib.Path("configs/lumia950_defconfig").read_text().splitlines()
           keys = [line.split("=", 1)[0].strip() for line in config
                   if line.strip() and not line.startswith("#")]
@@ -144,8 +145,12 @@ jobs:
           python3 -m py_compile scripts/build-arm-driver.py scripts/ci-clear-example.py scripts/check-payload.py \
               scripts/get-ntfs-driver.py scripts/make-lumia950-adt.py scripts/check-adt.py \
               scripts/check-gpu-addon.py scripts/check-screenshot.py scripts/panel.py \
-              scripts/stage-kernel.py
-          bash -n scripts/build-payload.sh
+              scripts/stage-kernel.py scripts/check-probe-image.py \
+              scripts/test-probe-qemu.py scripts/test-handoff-qemu.py scripts/adreno-firmware.py \
+              scripts/test-gpu-tools.py scripts/prepare-armcpu.py scripts/test-armcpu-patch.py \
+              scripts/test-gicv2-qemu.py scripts/probe_fat.py scripts/test-probe-fat.py
+          bash -n scripts/build-payload.sh scripts/build-probe.sh scripts/test-probe.sh scripts/test-gpu.sh scripts/test-storage.sh \
+              scripts/test-gicv2.sh scripts/build-gicv2-test.sh scripts/test-report.sh
 
       - name: Check the chainload payload configuration
         # The keys and enums are the ones UniXNULib/Config.c reads, so a typo fails here
@@ -210,20 +215,16 @@ jobs:
       - name: Host tests of the driver cores
         run: |
           mkdir -p build
-          g++ -std=c++17 -Wall -Wextra -Werror -I drivers/NativeSdhci \
-              drivers/NativeSdhci/Test/check-sdhci-core.cpp \
-              drivers/NativeSdhci/SdhciCore.cpp -o build/check-sdhci-core
-          ./build/check-sdhci-core
-          g++ -std=c++17 -Wall -Wextra -Werror -I drivers/NativeAdreno418 \
-              drivers/NativeAdreno418/Test/check-adreno-core.cpp \
-              drivers/NativeAdreno418/AdrenoCore.cpp \
-              drivers/NativeAdreno418/IommuCore.cpp \
-              drivers/NativeAdreno418/CommandStream.cpp -o build/check-adreno-core
-          ./build/check-adreno-core
+          bash scripts/test-storage.sh
+          bash scripts/test-gicv2.sh
+          bash scripts/test-gpu.sh
           g++ -std=c++17 -Wall -Wextra -Werror -I drivers/NativeMdss \
               drivers/NativeMdss/Test/check-mdss-core.cpp \
               drivers/NativeMdss/MdssCore.cpp -o build/check-mdss-core
           ./build/check-mdss-core
+
+      - name: Host tests of the firmware probe and framebuffer renderer
+        run: bash scripts/test-probe.sh
 
       - name: The GPU addon checker rejects what the phone would choke on
         # Rung 6 hands the Metal plugin over as one blob. This repository does not write
@@ -254,6 +255,76 @@ jobs:
             exit 1
           fi
           echo "$out" | grep -q "EXAMPLE device repository"
+
+  efi-preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      UNIXNU_EDK2: ${{ github.workspace }}/work/edk2-headers
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: tianocore/edk2
+          ref: 5c148d5a90825929283615136c20127bd7d14a69
+          path: work/edk2-headers
+          sparse-checkout: MdePkg/Include
+      - name: Install standalone EFI validation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang lld qemu-system-arm qemu-efi-aarch64 qemu-utils
+      - name: Test report failures and clock lookup without hardware access
+        run: bash scripts/test-report.sh
+      - name: Build the actual AArch64 EFI applications
+        run: PROBE_ENTRY=LumiaGpuProbe bash scripts/build-probe.sh out/gpu-preflight
+      - name: Verify firmware refusal and real file persistence
+        run: |
+          firmware=/usr/share/AAVMF/AAVMF_CODE.fd
+          if [ ! -f "$firmware" ]; then firmware=/usr/share/qemu-efi-aarch64/QEMU_EFI.fd; fi
+          test -s "$firmware"
+          for gic in 2 3; do
+            python3 scripts/test-probe-qemu.py --application gpu --esp out/gpu-preflight/esp \
+              --firmware "$firmware" --gic-version "$gic" --log "out/gpu-preflight/readonly-gic$gic.log"
+            python3 scripts/test-probe-qemu.py --application gpu --esp out/gpu-preflight/esp \
+              --firmware "$firmware" --gic-version "$gic" --writable-report-test \
+              --log "out/gpu-preflight/report-write-gic$gic.log"
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lumia950-efi-preflight
+          path: out/gpu-preflight/**
+
+  gicv2-emulation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: UniXNU/ArmCpu
+          ref: 9066b53bbc82e92a98ec44a11dd50fd13eaf1a1b
+          path: work/armcpu-reference
+      - name: Install standalone AArch64 validation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang lld qemu-system-arm
+      - name: Verify the pinned ArmCpu integration source
+        run: |
+          python3 scripts/test-armcpu-patch.py work/armcpu-reference/ArmCpu.cpp
+          python3 scripts/prepare-armcpu.py work/armcpu-reference/ArmCpu.cpp out/gicv2-validation/ArmCpu.cpp
+      - name: Exercise actual AArch64 IRQ exceptions
+        run: |
+          bash scripts/build-gicv2-test.sh
+          python3 scripts/test-gicv2-qemu.py build/gicv2-qemu/gicv2-test.elf
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lumia950-gicv2-core-emulation
+          path: |
+            out/gicv2-validation/**
+            build/gicv2-qemu/gicv2-test.elf
+            build/gicv2-qemu/gicv2-test-blocked-pmr.elf
 
   # The chainload payload: UniXNU.efi, DarwinBoot.efi and unixnu.toml in the EFIESP layout.
   # Manual like the kernel job: it clones edk2 and builds BaseTools, which is minutes of
@@ -443,7 +514,7 @@ jobs:
         # missing from this list is a core that was never compiled for ARM64.
         if: always()
         run: |
-          find "$UNIXNU_OUT" \( -name 'libNativeSdhci.a' -o -name 'libNativeLegacyDisplay.a' \
+          find "$UNIXNU_OUT" \( -name 'libArmCpu.a' -o -name 'libNativeSdhci.a' -o -name 'libNativeLegacyDisplay.a' \
             -o -name 'libNativeAdreno418.a' \) -exec shasum -a 256 {} \;
           for archive in "$UNIXNU_OUT"/*/tree/build/*/lib*.a; do
             echo "== $archive"
@@ -464,6 +535,7 @@ jobs:
             out/*/tree/build/xnu/ios-obj/*/mach.development.bcm2837
             out/*/tree/build/xnu/ios-obj/*/mach.development.bcm2837.unstripped
             out/*/tree/build/native-sdhci/**
+            out/*/tree/build/armcpu/**
             out/*/tree/build/native-adreno418/**
             out/*/tree/build/native-mdss/**
             out/*/tree/build/native-legacy-display/**
