@@ -32,6 +32,7 @@ struct ChannelSnapshot { u32 words[22]; };
 Result observeMemory(MemoryBinding &binding, const MemoryLayout &layout,
                      const MemoryAccess &access);
 Result snapshotChannel(MemoryBinding &binding, ChannelSnapshot &snapshot);
+bool idleAndEmpty(const ChannelSnapshot &snapshot, u32 fifoBytes);
 bool closedAndEmpty(const ChannelSnapshot &snapshot, u32 fifoBytes);
 Result claimMemory(MemoryBinding &binding, bool firmwareExited, bool exclusiveOwner);
 Result retireMemory(MemoryBinding &binding, const SmdPipe &pipe);

@@ -235,14 +235,15 @@ void Number(const ProbeFramebuffer &framebuffer, UINT32 row, const char *label, 
 
 [[noreturn]] void DisplayResult(const ProbeFramebuffer &framebuffer, const char *heading, bool passed,
                               Result claim, Result opened, Result closed, Result retired,
-                              const ChannelSnapshot &after, const ChannelSnapshot &last, bool exited)
+                              const ChannelSnapshot &after, const ChannelSnapshot &last,
+                              Result sampled, MemoryState memoryState, bool exited)
 {
     asm volatile("msr daifset, #15" ::: "memory");
     const UINT32 color = ProbeFramebufferColor(framebuffer.pixel_format, passed ? 0 : 255, passed ? 255 : 100, 0);
     ProbeFillRectangle(&framebuffer, 0, 0, framebuffer.width, framebuffer.height, 0);
     ProbeFillRectangle(&framebuffer, 0, 0, framebuffer.width, 12, color);
     Line(framebuffer, 0, heading, color);
-    Line(framebuffer, 1, exited ? "POST EBS - NATIVE SMD" : "NO EBS CONFIRMATION", color);
+    Line(framebuffer, 1, exited ? "POST EBS V3 - NATIVE SMD" : "NO EBS CONFIRMATION", color);
     Line(framebuffer, 2, "NO RESOURCE VOTES OR GPU WRITES", color);
     Line(framebuffer, 3, "CLAIM", color); Line(framebuffer, 4, ResultName(claim), color);
     Line(framebuffer, 5, "OPEN", color); Line(framebuffer, 6, ResultName(opened), color);
@@ -250,14 +251,21 @@ void Number(const ProbeFramebuffer &framebuffer, UINT32 row, const char *label, 
     Line(framebuffer, 9, "RETIRE", color); Line(framebuffer, 10, ResultName(retired), color);
     Number(framebuffer, 12, "EBS LOCAL", after.words[0], color);
     Number(framebuffer, 13, "EBS REMOTE", after.words[11], color);
-    Number(framebuffer, 14, "FINAL LOCAL", last.words[0], color);
-    Number(framebuffer, 15, "FINAL REMOTE", last.words[11], color);
-    Number(framebuffer, 16, "TX READ", last.words[9], color);
-    Number(framebuffer, 17, "TX WRITE", last.words[10], color);
-    Number(framebuffer, 18, "RX READ", last.words[20], color);
-    Number(framebuffer, 19, "RX WRITE", last.words[21], color);
-    Line(framebuffer, 21, "NOT GPU ACCELERATION OR IOS", color);
-    Line(framebuffer, 22, "FORCE REBOOT TO EXIT", color);
+    Number(framebuffer, 14, "EBS LOCAL DTR", after.words[1], color);
+    Number(framebuffer, 15, "EBS REMOTE DTR", after.words[12], color);
+    Number(framebuffer, 16, "LAST LOCAL", last.words[0], color);
+    Number(framebuffer, 17, "LAST REMOTE", last.words[11], color);
+    Number(framebuffer, 18, "LAST LOCAL DTR", last.words[1], color);
+    Number(framebuffer, 19, "LAST REMOTE DTR", last.words[12], color);
+    Number(framebuffer, 20, "TX READ", last.words[9], color);
+    Number(framebuffer, 21, "TX WRITE", last.words[10], color);
+    Number(framebuffer, 22, "RX READ", last.words[20], color);
+    Number(framebuffer, 23, "RX WRITE", last.words[21], color);
+    Number(framebuffer, 24, "RX STATE FLAG", last.words[18], color);
+    Number(framebuffer, 25, "MEMORY STATE", static_cast<UINT32>(memoryState), color);
+    Line(framebuffer, 27, "LAST SNAPSHOT", color); Line(framebuffer, 28, ResultName(sampled), color);
+    Line(framebuffer, 30, "NOT GPU ACCELERATION OR IOS", color);
+    Line(framebuffer, 31, "FORCE REBOOT TO EXIT", color);
     Flush(framebuffer, 0, framebuffer.height);
     const UINT32 top = framebuffer.height - 64;
     const UINT32 width = framebuffer.width / 8;
@@ -283,25 +291,26 @@ void Number(const ProbeFramebuffer &framebuffer, UINT32 row, const char *label, 
     Line(framebuffer, 0, "POST EBS - CHECKING RPM", blue);
     Line(framebuffer, 1, "NO GPU WRITES OR RESOURCE VOTES", blue);
     Flush(framebuffer, 0, framebuffer.height);
-    Result claim = Result::NotReady;
-    for (UINT32 attempt = 0; attempt < 200; ++attempt) {
-        claim = claimMemory(binding, true, true);
-        if (claim != Result::NotReady || binding.state != MemoryState::Observed) { break; }
-        if (attempt + 1 < 200) { Delay(nullptr, 1000); }
-    }
     ChannelSnapshot after = {}, last = {};
+    Result claim = snapshotChannel(binding, after);
+    if (claim == Result::Ok) {
+        for (UINT32 attempt = 0; attempt < 200; ++attempt) {
+            claim = claimMemory(binding, true, true);
+            if (claim != Result::NotReady || binding.state != MemoryState::Observed) { break; }
+            if (attempt + 1 < 200) { Delay(nullptr, 1000); }
+        }
+    }
     Result opened = Result::NotReady, closed = Result::NotReady, retired = Result::NotReady;
-    const Result sampled = snapshotChannel(binding, after);
-    if (claim == Result::Ok && sampled == Result::Ok) {
-        SmdPipe pipe = {};
+    SmdPipe pipe = {};
+    if (claim == Result::Ok) {
         opened = openPipe(pipe, memoryIo(binding), 88, binding.layout.fifo.bytes / 2, true, true, 2000, 100);
         if (opened == Result::Ok) { closed = closePipe(pipe, 2000, 100); }
-        snapshotChannel(binding, last);
-        if (closed == Result::Ok) { retired = retireMemory(binding, pipe); }
-    } else { last = after; }
+    }
+    const Result sampled = snapshotChannel(binding, last);
+    if (closed == Result::Ok && sampled == Result::Ok) { retired = retireMemory(binding, pipe); }
     const bool passed = claim == Result::Ok && opened == Result::Ok && closed == Result::Ok && retired == Result::Ok;
     DisplayResult(framebuffer, passed ? "NATIVE RPM CHANNEL OK" : "RPM HANDOFF STOPPED", passed,
-                  claim, opened, closed, retired, after, last, true);
+                  claim, opened, closed, retired, after, last, sampled, binding.state, true);
 }
 
 }
@@ -331,7 +340,7 @@ static EFI_STATUS Run(EFI_HANDLE image, EFI_SYSTEM_TABLE *systemTable)
     saveAttempted = false;
     preflightStage = "PLATFORM";
     firmware->ConOut->ClearScreen(firmware->ConOut);
-    Print("LUMIA 950 | NATIVE RPM HANDOFF v2\r\n");
+    Print("LUMIA 950 | NATIVE RPM HANDOFF v3\r\n");
     Print("Optional post-EBS channel open/close; NO RPM packets or GPU writes.\r\n");
     if (!LumiaPlatform()) {
         Print("PLATFORM_UNSUPPORTED: no SMEM, translation or MMIO access.\r\n");
@@ -399,7 +408,7 @@ static EFI_STATUS Run(EFI_HANDLE image, EFI_SYSTEM_TABLE *systemTable)
     const ProbeFramebuffer framebuffer = {mode->FrameBufferBase, mode->FrameBufferSize,
         mode->Info->HorizontalResolution, mode->Info->VerticalResolution,
         mode->Info->PixelsPerScanLine, static_cast<UINT32>(mode->Info->PixelFormat)};
-    if (!ProbeFramebufferValid(&framebuffer) || framebuffer.width < 640 || framebuffer.height < 1000) { return EFI_UNSUPPORTED; }
+    if (!ProbeFramebufferValid(&framebuffer) || framebuffer.width < 640 || framebuffer.height < 1280) { return EFI_UNSUPPORTED; }
     preflightStage = "IMAGE_OVERLAP";
     EFI_GUID loadedGuid = EFI_LOADED_IMAGE_PROTOCOL_GUID;
     EFI_LOADED_IMAGE_PROTOCOL *loaded = nullptr;
@@ -492,7 +501,8 @@ static EFI_STATUS Run(EFI_HANDLE image, EFI_SYSTEM_TABLE *systemTable)
     }
     const ChannelSnapshot empty = {};
     DisplayResult(framebuffer, "EXIT BOOT SERVICES FAILED", false, Result::NotReady,
-                  Result::NotReady, Result::NotReady, Result::NotReady, empty, empty, false);
+                  Result::NotReady, Result::NotReady, Result::NotReady, empty, empty,
+                  Result::NotReady, binding.state, false);
 }
 
 extern "C" EFI_STATUS EFIAPI UefiMain(EFI_HANDLE image, EFI_SYSTEM_TABLE *systemTable)

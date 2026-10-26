@@ -115,7 +115,7 @@ Result openPipe(SmdPipe &pipe, const SmdIo &io, u32 controlBytes, u32 fifoBytes,
     u32 local = 0, remote = 0, localDtr = 0, remoteDtr = 0, reader = 0, writer = 0;
     if (!io.barrier(io.context) ||
         !read(candidate, SmdSpace::Control, kStreamState, &local) || local != 0 ||
-        !read(candidate, SmdSpace::Control, kHalfBytes + kStreamState, &remote) || remote != 0 ||
+        !read(candidate, SmdSpace::Control, kHalfBytes + kStreamState, &remote) || (remote != 0 && remote != 4) ||
         !read(candidate, SmdSpace::Control, kDtr, &localDtr) || localDtr != 0 ||
         !read(candidate, SmdSpace::Control, kHalfBytes + kDtr, &remoteDtr) || remoteDtr != 0 ||
         !indices(candidate, 0, &reader, &writer) || reader != writer ||
@@ -126,6 +126,8 @@ Result openPipe(SmdPipe &pipe, const SmdIo &io, u32 controlBytes, u32 fifoBytes,
     pipe.state = PipeState::Opening;
     if (!write(pipe, SmdSpace::Control, kHalfBytes + kReadIndex, 0) ||
         !write(pipe, SmdSpace::Control, kWriteIndex, 0) ||
+        !write(pipe, SmdSpace::Control, kCts, 0) ||
+        !write(pipe, SmdSpace::Control, kCarrierDetect, 0) ||
         !write(pipe, SmdSpace::Control, kMaskReceive, 0) || !io.barrier(io.context) ||
         !write(pipe, SmdSpace::Control, kStreamState, 1) ||
         !write(pipe, SmdSpace::Control, kStateUpdated, 1) ||
@@ -133,30 +135,50 @@ Result openPipe(SmdPipe &pipe, const SmdIo &io, u32 controlBytes, u32 fifoBytes,
         poison(pipe, Transfer::IoError);
         return Result::IoError;
     }
+    bool localOpened = false;
     for (u32 attempt = 0; attempt < pollBudget; ++attempt) {
         if (!io.barrier(io.context) || !read(pipe, SmdSpace::Control, kHalfBytes + kStreamState, &remote)) {
             poison(pipe, Transfer::IoError);
             return Result::IoError;
         }
-        if (remote == 2) {
+        if (remote == 3 || remote > 4 || (localOpened && (remote == 0 || remote == 4))) {
+            poison(pipe, Transfer::Closed);
+            return Result::IoError;
+        }
+        if (!localOpened && (remote == 1 || remote == 2)) {
             if (!write(pipe, SmdSpace::Control, kHalfBytes + kStateUpdated, 0) ||
                 !write(pipe, SmdSpace::Control, kDtr, 1) ||
                 !write(pipe, SmdSpace::Control, kCts, 1) ||
                 !write(pipe, SmdSpace::Control, kCarrierDetect, 1) || !io.barrier(io.context) ||
                 !write(pipe, SmdSpace::Control, kStreamState, 2) ||
                 !write(pipe, SmdSpace::Control, kStateUpdated, 1) ||
-                !io.barrier(io.context) || !io.notify(io.context) || !ready(pipe) ||
-                !indices(pipe, 0, &reader, &writer) || reader != 0 || writer != 0 ||
-                !indices(pipe, kHalfBytes, &reader, &writer) || reader != 0 || writer != 0) {
+                !io.barrier(io.context) || !io.notify(io.context) ||
+                !io.barrier(io.context) ||
+                !read(pipe, SmdSpace::Control, kHalfBytes + kStreamState, &remote)) {
                 poison(pipe, Transfer::IoError);
                 return Result::IoError;
             }
-            pipe.state = PipeState::Ready;
-            return Result::Ok;
+            localOpened = true;
         }
-        if (remote > 2) {
+        if (remote == 3 || remote > 4 || (localOpened && (remote == 0 || remote == 4))) {
             poison(pipe, Transfer::Closed);
             return Result::IoError;
+        }
+        if (localOpened && remote == 2) {
+            if (!read(pipe, SmdSpace::Control, kHalfBytes + kDtr, &remoteDtr) || remoteDtr > 1) {
+                poison(pipe, Transfer::IoError);
+                return Result::IoError;
+            }
+            if (remoteDtr == 1) {
+                if (!ready(pipe) || !indices(pipe, 0, &reader, &writer) || reader != 0 || writer != 0 ||
+                    !indices(pipe, kHalfBytes, &reader, &writer) || reader != 0 || writer != 0 ||
+                    !write(pipe, SmdSpace::Control, kHalfBytes + kStateUpdated, 0) || !io.barrier(io.context)) {
+                    poison(pipe, Transfer::IoError);
+                    return Result::IoError;
+                }
+                pipe.state = PipeState::Ready;
+                return Result::Ok;
+            }
         }
         if (attempt + 1 < pollBudget) { io.delayUs(io.context, delayUs); }
     }
@@ -203,7 +225,7 @@ Result closePipe(SmdPipe &pipe, u32 pollBudget, u32 delayUs)
                 return Result::IoError;
             }
             localClosed = true;
-        } else if (localClosed && remote == 0 && remoteDtr == 0) {
+        } else if (localClosed && (remote == 0 || remote == 4) && remoteDtr == 0) {
             if (!write(pipe, SmdSpace::Control, kHalfBytes + kStateUpdated, 0) ||
                 !io.barrier(io.context) || !indices(pipe, 0, &reader, &writer) || reader != writer ||
                 !indices(pipe, kHalfBytes, &reader, &writer) || reader != writer) {

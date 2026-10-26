@@ -141,12 +141,22 @@ resource map and logs its classification/capabilities instead of assuming every 
 range appears with UC attributes in `GetMemoryMap`. It still refuses any overlapping
 UEFI RAM, loader, boot-services or runtime allocation. No GCD map is modified.
 
+V2 ran on the handset and reached native post-exit control reads. The result was local
+`CLOSED (0)`, peer `CLOSING (4)`, TX read/write `0x60` and RX read/write `0x28`: both FIFOs
+were empty, but v2's stricter claim refused the peer state. V3 accepts this idle boundary
+only with exclusive ownership, valid mappings, both DTR signals zero and eight identical
+empty snapshots. It also handles peer `OPENING -> OPENED` as two phases under one deadline,
+and reports post-exit DTR, snapshot validity and memory-binding state. No peer state or
+unread FIFO is overwritten. V3's native handshake is not yet qualified on the handset.
+
 At `RPM HANDOFF READY`, **Volume Up starts**; any other key cancels. The test disables
 the watchdog, captures a fresh memory map and exits boot services. It then masks interrupts,
-rechecks the mappings and closed/empty state, and performs one bounded native open/close
+rechecks the mappings and idle/empty state, and performs one bounded native open/close
 handshake through shared-memory control words and the RPM IPC doorbell. It never sends a
 resource packet, adopts a still-open channel, or resets unread data. Mappings remain pinned
-on uncertain failure. After confirmed close, access is retired rather than reused.
+on uncertain failure. After local close with an idle peer, eight stable snapshots qualify
+retirement of local access rather than reuse. Peer CLOSING is not falsely recorded as
+peer CLOSED. The RPM shared storage stays reserved; no resource vote or rail is released.
 
 The orange `BEFORE EBS`, blue `POST EBS - CHECKING RPM`, and final result are distinct
 stages. A green `NATIVE RPM CHANNEL OK` requires claim, open, close and retirement all to
@@ -160,15 +170,15 @@ are kept; this does not qualify XNU's future mappings, native IRQs or resource-v
 
 ```sh
 UNIXNU_EDK2=/path/to/edk2 PROBE_ENTRY=LumiaRpmHandoff \
-    bash scripts/build-probe.sh out/rpm-handoff-v2
+    bash scripts/build-probe.sh out/rpm-handoff-v3
 bash scripts/test-gpu.sh
 UNIXNU_EDK2=/path/to/edk2 bash scripts/test-report.sh
-python3 scripts/test-probe-qemu.py --application rpm --esp out/rpm-handoff-v2/esp \
+python3 scripts/test-probe-qemu.py --application rpm --esp out/rpm-handoff-v3/esp \
     --firmware /path/to/edk2-aarch64-code.fd --gic-version 2
 ```
 
 QEMU exercises only the unsupported-platform return; the Lumia RPM is not emulated.
-The 171-check memory/handoff suite uses a simulated peer; no handset handshake success is
+The 685-check memory/handoff suite uses a simulated peer; no handset handshake success is
 claimed from those tests. The standalone app must be installed deliberately; selecting
 `PROBE_ENTRY` stages only an output directory and does not write a physical disk.
 

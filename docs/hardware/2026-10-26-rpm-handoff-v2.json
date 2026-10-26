@@ -1,0 +1,52 @@
+{
+  "date": "2026-10-26",
+  "device": "Microsoft Lumia 950, MSM8992",
+  "application": "Native RPM handoff v2",
+  "efi_sha256": "3ceca49bf9b119eec6ed79ceec753ecc636634fdf296d79cf45d1a38bb94874f",
+  "source_commit": "e8a51b04b199c7f593a43ab61c6f5c5c36e44df4",
+  "evidence": {
+    "kind": "User-supplied photograph of the post-firmware result screen",
+    "filename": "PXL_20261026_200128103.jpg",
+    "sha256": "130730c2a9178099f3788b2d27afa587d43eb11dc742752e8f01434249ceccd8",
+    "heading": "User reported RPM HANDOFF STOPPED; the supplied photograph crops the heading",
+    "saved_preflight_retrieved": false
+  },
+  "observations": {
+    "claim": "NOT READY",
+    "open": "NOT READY",
+    "close": "NOT READY",
+    "retire": "NOT READY",
+    "ebs_local": "0x00000000",
+    "ebs_remote": "0x00000004",
+    "final_local": "0x00000000",
+    "final_remote": "0x00000004",
+    "tx_read": "0x00000060",
+    "tx_write": "0x00000060",
+    "rx_read": "0x00000028",
+    "rx_write": "0x00000028",
+    "dtr": "Not displayed by v2; neither value is established by this photograph"
+  },
+  "interpretation": {
+    "exit_boot_services_returned_success": true,
+    "exit_evidence": "The photographed nonzero endpoint/indices are drawn only on the native AfterExit path, entered after successful ExitBootServices",
+    "preflight_gates_passed": "Platform, Device translations, GCD classification and UEFI RAM-conflict checks necessarily passed; raw GCD descriptors await saved-report retrieval",
+    "local_endpoint": "CLOSED",
+    "remote_endpoint": "CLOSING",
+    "fifo_occupancy": "Both directions empty: matching read/write indices, not unread responses",
+    "claim_blocker": "V2 requires remote CLOSED (0); remote CLOSING (4) is sufficient to reject ownership even when both FIFOs are empty",
+    "additional_unobserved_blockers_possible": true,
+    "native_open_attempted": false,
+    "native_close_attempted": false,
+    "native_channel_or_ipc_writes": false,
+    "firmware_exit_handler_may_write_channel": true
+  },
+  "next_revision": {
+    "claim_requires": "Successful firmware exit, exclusive caller ownership, revalidated Device mappings and eight identical empty snapshots with local CLOSED, peer CLOSED/CLOSING and both DTR signals zero",
+    "open_requires": "An idle channel, bounded OPENING/OPENED handshake, peer OPENED with DTR asserted and zeroed indices before packet traffic",
+    "retirement": "Local access only; never frees RPM-owned shared storage, cancels resource votes or proves a shared supply may be released",
+    "additional_diagnostics": "Post-EBS DTR, last-snapshot validity, remote state-update flag and memory-binding state"
+  },
+  "gpu_frame_observed": false,
+  "60fps_observed": false,
+  "ios_boot_observed": false
+}

@@ -25,7 +25,7 @@
     "aarch64_efi_crosscompile": true,
     "qemu_platform_refusal_and_return": [2, 3],
     "qemu_emulates_lumia_rpm": false,
-    "native_xnu_abi_compile_of_v2": "Not yet qualified; requires a new source-revision build"
+    "native_xnu_abi_compile_of_v2": "Successful kernel job 121811495713 in run 40390953221, source e8a51b04b199c7f593a43ab61c6f5c5c36e44df4; compilation/linking only, not a loadable or runtime-qualified image"
   },
   "efi_artifact": {
     "name": "LumiaRpmHandoff.efi",
@@ -33,7 +33,10 @@
     "sha256": "3ceca49bf9b119eec6ed79ceec753ecc636634fdf296d79cf45d1a38bb94874f"
   },
   "runtime_status": {
-    "handset_gcd_qualified": false,
+    "handset_gcd_qualified": true,
+    "handset_firmware_exit_and_control_reads": true,
+    "handset_evidence": "../hardware/2026-10-26-rpm-handoff-v2.json",
+    "handset_result": "Claim NOT READY: local CLOSED, peer CLOSING, both FIFOs empty; no native open attempted",
     "handset_native_channel_open_close_qualified": false,
     "rpm_resource_requests_sent_by_application": false,
     "gpu_frame_observed": false,

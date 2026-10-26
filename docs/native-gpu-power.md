@@ -86,12 +86,17 @@ request encoding, ACK decoding and a serialized resource transaction engine:
   must validate/map the buffers and provide real ordered MMIO/barrier/IPC operations;
   cached mappings with no coherency implementation are refused.
 - Adoption accepts only an already-open, empty channel. Native opening accepts only
-  an exclusively owned, closed, quiescent channel and performs a bounded
-  `CLOSED -> OPENING -> OPENED` polling handshake. Each endpoint resets its own indices.
+  an exclusively owned, idle, quiescent channel: local CLOSED, peer CLOSED or CLOSING,
+  both DTR signals zero and both FIFOs empty. It performs a bounded
+  `CLOSED -> OPENING -> OPENED` polling handshake. Peer OPENING or OPENED acknowledges
+  the first phase; peer OPENED with DTR asserted is required to finish. Both phases share
+  one poll budget. Each endpoint resets only its own indices after emptiness is checked.
   Resource traffic is disabled while opening. A failed handshake cannot be blindly
   retried on the same channel object.
 - Bounded native `OPENED -> CLOSING -> CLOSED` teardown accepts immediate CLOSED or
-  intermediate CLOSING replies, refuses unread data, and poisons uncertain completion.
+  CLOSING replies. After local CLOSED, a peer remaining CLOSING is a valid idle boundary
+  only with DTR deasserted and both FIFOs empty. Teardown refuses unread data and poisons
+  uncertain completion; it never writes the peer state to manufacture CLOSED.
   The polling opener/closer acknowledges the remote state-updated flags as their consumer.
   Closing a channel does **not** cancel RPM votes or establish that a rail can be released.
 
@@ -108,12 +113,14 @@ request encoding, ACK decoding and a serialized resource transaction engine:
   execution world. V2 replaces v1's invalid NS-bit requirement with an explicit platform
   contract, covered by positive NS-bit-zero and unknown-world refusal regressions.
 - Initial observation permits control-block reads only. Firmware exit, exclusive caller
-  ownership, revalidated mappings and eight identical CLOSED/empty snapshots are required
+  ownership, revalidated mappings and eight identical idle/empty snapshots are required
   before writes. Stable snapshots are a quiescence check, not a substitute for ownership.
 - The callbacks prohibit writing the receive FIFO or remote-owned state/producer words.
   Doorbell writes are exactly `1`, barrier ordered, with no doorbell read-modify-write.
-  Only a confirmed CLOSED channel can retire the binding; retired or poisoned bindings
-  cannot perform more I/O. The owner must pin the mappings and serialize all access.
+  Retirement repeats the mapping and eight-snapshot checks after local close; retired or
+  poisoned bindings cannot perform more I/O. Retirement stops this caller's access only:
+  RPM's shared physical storage stays reserved, no resource vote is cancelled, and no rail
+  release is authorized. The owner must pin the storage and serialize all access.
 
 `tools/uefi-probe/LumiaRpmHandoff.cpp` is the first real AArch64 caller of this adapter.
 It is a **separate opt-in application**, not the v3 metadata probe. It requires the exact
@@ -128,7 +135,7 @@ Those checks do not prove a successful bus transaction or qualify a future XNU p
 
 Volume Up deliberately exits firmware. With interrupts masked and no other native
 channel user started, the application waits boundedly for the firmware's close to settle,
-claims the closed channel, opens and closes it natively, then retires access. No RPM
+claims the idle channel, opens and closes it natively, then retires local access. No RPM
 request encoder is linked and no resource packet, GPU register, clock or power register
 is written. Open/close notifications do reach RPM if the gates pass; this is not a
 read-only diagnostic. A failure retains the uncertain mapping until force reboot instead
@@ -140,8 +147,19 @@ indices are drawn by the CPU, with a heartbeat, and must be observed on the scre
 V1 has now run on the handset: its saved report confirms valid Device translations but
 the strict UEFI MMIO-descriptor check rejected the map, before any channel read, write or
 firmware exit. That explains the immediate return to the menu. The exact descriptor
-mismatch was not captured by v1. V2 adds GCD classification and holds failures on screen;
-its native handshake remains untested. See `docs/hardware/2026-10-26-rpm-handoff-v1.json`.
+mismatch was not captured by v1. V2 adds GCD classification and holds failures on screen.
+V2 has now successfully exited firmware on the handset, but its claim refused local
+**CLOSED (0), peer CLOSING (4)**. TX read/write both equal **`0x60`** and RX read/write both
+equal **`0x28`**: neither FIFO contains unread data. No native channel write or open was
+attempted. DTR was not displayed, so no DTR value is inferred from this photograph.
+See `docs/hardware/2026-10-26-rpm-handoff-v2.json`.
+
+The matching firmware exits its close handler as soon as it publishes local CLOSED in
+response to peer CLOSING; it does not wait for peer CLOSED. V3 handles that idle boundary
+without changing the peer's state, discarding payload, or relaxing ownership, DTR, empty
+FIFO, translation or stability checks. Its result includes both DTR signals and explicit
+last-snapshot validity. The first snapshot is captured immediately after firmware exit,
+before ownership polling. Successful native open/close still requires a new handset run.
 
 Both components are single-caller internals, not a user-client ABI. The owner must
 serialize callers/interrupt handlers and keep the mapped shared memory alive while the
@@ -163,9 +181,12 @@ FIFO wrap directions, partial frames, producer/notification ordering, invalid in
 failed publication, native reopen and multiple correlated transactions across a simulated
 peer. Tests do not send real votes or power the handset GPU.
 
-The memory/teardown suite adds 171 checks for translation and reservation-independent
+The memory/teardown suite adds 685 checks for translation and reservation-independent
 binding, endpoint write ownership, delayed close, timeout, reset, changing metadata and
-mapping retirement. Another 38 mocked EFI memory-map checks cover descriptor stride,
+mapping retirement. Regressions cover all 64 combinations of endpoint states 0 through 7,
+the photographed empty nonzero indices, CLOSED/CLOSING handoff, both opening phases,
+delayed DTR, a peer remaining CLOSING, and late changes during retirement. Another 38
+mocked EFI memory-map checks cover descriptor stride,
 unaligned input, reservation bounds, duplicate/overlapping descriptors and reclaimable
 memory refusal, including GCD-qualified MMIO absent from the UEFI map. Thirty mocked DXE
 checks cover table discovery, ABI slots, start/end coverage, UC capability, invalid resource
@@ -186,7 +207,7 @@ GPU service. The kernel candidate is unqualified and has not been installed or b
 
 1. Discover and validate the handset's APPS-RPM SMEM channel, map its reserved buffers
    and IPC notification register, and bind the native callbacks after firmware handoff.
-   The native binding and one-shot open/close test now exist but need handset execution.
+   V2 now proves post-exit control reads; V3's native one-shot open/close needs handset execution.
    Only the word-access layout is implemented here; alternate layouts are refused.
 2. Implement the shared resource-vote/lease policy, qualify the actual graphics supply
    profile and parent rates, then sequence supplies, CX/GX GDSCs and the three branches.
@@ -206,6 +227,7 @@ GPU service. The kernel candidate is unqualified and has not been installed or b
 - [MSM8992 wiring and GX supply](https://github.com/LineageOS/android_kernel_lge_msm8992/blob/d25caae7761fc0dae85091fea7aa5a0a5006ea58/arch/arm/boot/dts/qcom/msm8992.dtsi)
 - [Reference regulator configuration, not a Lumia-qualified profile](https://github.com/LineageOS/android_kernel_lge_msm8992/blob/d25caae7761fc0dae85091fea7aa5a0a5006ea58/arch/arm/boot/dts/qcom/msm8992-regulator.dtsi)
 - [RPM request and response protocol](https://github.com/torvalds/linux/blob/v6.12/drivers/soc/qcom/smd-rpm.c)
+- [Linux SMD two-phase opening and local close semantics](https://github.com/torvalds/linux/blob/v6.12/drivers/rpmsg/qcom_smd.c)
 - [Lumia word-access SMD layout](https://github.com/WOA-Project/Lumia950XLPkg/blob/cfc68a4d19fc7e8645bff6d8fce7308ad8494a76/Driver/SmdRpmDxe/smd.h)
 - [Firmware SMEM lookup at the displayed bootstrap revision](https://github.com/WOA-Project/Lumia950XLPkg/blob/0e7e24a/Driver/SmemDxe/smem.c)
 - [Firmware channel and IPC definition at that revision](https://github.com/WOA-Project/Lumia950XLPkg/blob/0e7e24a/Driver/SmdRpmDxe/smd.c)

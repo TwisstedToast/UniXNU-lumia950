@@ -28,6 +28,8 @@ struct Device {
     bool clearNsBit = false, unknownWorld = false, writeFault = false, fault = false, wrongPhysical = false;
     bool failTranslate = false, failRead = false, failWrite = false, failBarrier = false;
     bool peer = true, dirtyClose = false, remoteReset = false, delayedClose = false;
+    bool closingIdle = false, delayedOpen = false;
+    u32 openingReply = 2, openedReply = 2, openedAfterDelay = 0;
     u64 faultAddress = 0;
     unsigned reads = 0, writes = 0, translations = 0, delays = 0, notifications = 0;
     u32 mutateAfterDelay = 0;
@@ -81,14 +83,18 @@ struct Device {
             if (!device.peer) { return true; }
             device.control[18] = 1;
             if (device.control[0] == 1) {
-                device.control[11] = 2;
-                device.control[12] = 1;
+                device.control[11] = device.openingReply;
+                device.control[12] = device.openingReply == 2 ? 1 : 0;
                 device.control[9] = device.control[21] = 0;
+            } else if (device.control[0] == 2) {
+                device.control[11] = device.openedReply;
+                device.control[12] = device.openedReply == 2 && !device.delayedOpen ? 1 : 0;
+                if (device.delayedOpen) { device.openedAfterDelay = device.delays + 2; }
             } else if (device.control[0] == 4) {
-                device.control[11] = device.remoteReset ? 5 : device.delayedClose ? 4 : 0;
+                device.control[11] = device.remoteReset ? 5 : device.delayedClose || device.closingIdle ? 4 : 0;
                 device.control[12] = 0;
             } else if (device.control[0] == 0) {
-                device.control[11] = 0;
+                device.control[11] = device.closingIdle ? 4 : 0;
                 device.control[12] = 0;
                 if (device.dirtyClose) { device.control[21] = 4; }
             }
@@ -109,6 +115,11 @@ struct Device {
     {
         auto &device = *static_cast<Device *>(context);
         ++device.delays;
+        if (device.openedAfterDelay && device.delays == device.openedAfterDelay) {
+            device.control[11] = 2;
+            device.control[12] = 1;
+            device.control[18] = 1;
+        }
         if (device.mutateAfterDelay && device.delays == device.mutateAfterDelay) { ++device.control[5]; }
         expect(microseconds <= 1000, "native delays respect the qualified transport bound");
     }
@@ -202,7 +213,7 @@ void testOwnership()
         Device device;
         switch (mutation) {
         case 0: device.control[0] = 2; break;
-        case 1: device.control[11] = 4; break;
+        case 1: device.control[11] = 3; break;
         case 2: device.control[1] = 1; break;
         case 3: device.control[12] = 1; break;
         case 4: device.control[10] = 4; break;
@@ -228,6 +239,15 @@ void testOwnership()
     expect(claimMemory(remapped, true, true) == Result::NotReady &&
            remapped.state == MemoryState::Poisoned && changed.reads == 0 && changed.writes == 0,
            "handoff revalidates translations instead of trusting a pre-exit cacheability observation");
+    Device changedSnapshot;
+    MemoryBinding snapshotMapping = {};
+    observeMemory(snapshotMapping, changedSnapshot.layout, changedSnapshot.access());
+    changedSnapshot.attributes = 0xff;
+    ChannelSnapshot unqualified = {};
+    unqualified.words[0] = 99;
+    expect(snapshotChannel(snapshotMapping, unqualified) == Result::NotReady && unqualified.words[0] == 0 &&
+           snapshotMapping.state == MemoryState::Poisoned && changedSnapshot.reads == 0 && changedSnapshot.writes == 0,
+           "the first post-exit snapshot revalidates mappings before reading any control word");
     Device failed;
     MemoryBinding broken = {};
     observeMemory(broken, failed.layout, failed.access());
@@ -236,6 +256,143 @@ void testOwnership()
     snapshot.words[0] = 99;
     expect(snapshotChannel(broken, snapshot) == Result::IoError && snapshot.words[0] == 0 &&
            broken.state == MemoryState::Poisoned, "failed snapshot exposes no partial data and poisons access");
+}
+
+void testIdleHandoff()
+{
+    for (u32 local = 0; local < 8; ++local) {
+        for (u32 remote = 0; remote < 8; ++remote) {
+            Device device;
+            device.control[0] = local;
+            device.control[11] = remote;
+            device.control[9] = device.control[10] = 0x60;
+            device.control[20] = device.control[21] = 0x28;
+            const auto original = device.control;
+            MemoryBinding binding = {};
+            observeMemory(binding, device.layout, device.access());
+            const Result claimed = claimMemory(binding, true, true);
+            const bool idle = local == 0 && (remote == 0 || remote == 4);
+            expect((claimed == Result::Ok) == idle && device.control == original && device.writes == 0,
+                   "only local CLOSED with peer CLOSED/CLOSING and empty measured indices qualifies without writes");
+        }
+    }
+    for (u32 mutation = 0; mutation < 10; ++mutation) {
+        Device device;
+        device.control[11] = 4;
+        device.control[9] = device.control[10] = 0x60;
+        device.control[20] = device.control[21] = 0x28;
+        switch (mutation) {
+        case 0: device.control[1] = 1; break;
+        case 1: device.control[12] = 1; break;
+        case 2: device.control[10] += 4; break;
+        case 3: device.control[21] += 4; break;
+        case 4: device.control[9] = device.control[10] = 1024; break;
+        case 5: device.control[20] = device.control[21] = 1024; break;
+        case 6: device.control[9] = device.control[10] = 1; break;
+        case 7: device.control[20] = device.control[21] = 1; break;
+        case 8: device.mutateAfterDelay = 1; break;
+        case 9: device.mutateAfterDelay = 7; break;
+        }
+        MemoryBinding binding = {};
+        observeMemory(binding, device.layout, device.access());
+        expect(claimMemory(binding, true, true) == Result::NotReady && device.writes == 0 &&
+               binding.state == MemoryState::Observed,
+               "CLOSING peer does not excuse live DTR, unread data, invalid indices or changing metadata");
+    }
+    for (u32 reply : {1u, 2u}) {
+        for (bool closing : {false, true}) {
+            Device device;
+            device.control[11] = 4;
+            device.control[9] = device.control[10] = 0x60;
+            device.control[20] = device.control[21] = 0x28;
+            device.openingReply = reply;
+            device.closingIdle = closing;
+            MemoryBinding binding = {};
+            SmdPipe pipe = {};
+            observeMemory(binding, device.layout, device.access());
+            const Result claimed = claimMemory(binding, true, true);
+            expect(claimed == Result::Ok, "exclusive post-EBS ownership accepts the photographed idle state pair");
+            if (claimed != Result::Ok) { continue; }
+            expect(openPipe(pipe, memoryIo(binding), 88, 1024, true, true, 20, 100) == Result::Ok &&
+                   device.notifications == 2 && device.control[11] == 2 && device.control[12] == 1 &&
+                   device.control[18] == 0,
+                   "idle CLOSING peer reopens through either OPENING or OPENED acknowledgement");
+            expect(closePipe(pipe, 20, 100) == Result::Ok && pipe.state == PipeState::Closed &&
+                   device.control[0] == 0 && device.control[11] == (closing ? 4u : 0u) &&
+                   device.control[12] == 0 && device.notifications == 4,
+                   "native close accepts a deasserted, empty peer that remains CLOSING after local CLOSED");
+            expect(retireMemory(binding, pipe) == Result::Ok && binding.state == MemoryState::Retired,
+                   "stable idle channel can retire local access without freeing its shared physical storage");
+            for (const auto &operation : device.operations) {
+                if (operation.kind != 'S') { continue; }
+                expect(operation.address < device.layout.fifo.address ||
+                       operation.address >= device.layout.fifo.address + device.layout.fifo.bytes,
+                       "CLOSING handoff performs no FIFO payload stores or resource requests");
+            }
+        }
+    }
+}
+
+void testOpeningReplies()
+{
+    Device delayed;
+    delayed.openingReply = 1;
+    delayed.delayedOpen = true;
+    MemoryBinding binding = {};
+    SmdPipe pipe = {};
+    observeMemory(binding, delayed.layout, delayed.access());
+    claimMemory(binding, true, true);
+    expect(openPipe(pipe, memoryIo(binding), 88, 1024, true, true, 10, 100) == Result::Ok &&
+           delayed.delays == 9 && pipe.state == PipeState::Ready,
+           "OPENING acknowledgement is followed by a bounded wait for OPENED and DTR");
+    for (u32 failure = 0; failure < 4; ++failure) {
+        Device device;
+        MemoryBinding memory = {};
+        SmdPipe opening = {};
+        observeMemory(memory, device.layout, device.access());
+        claimMemory(memory, true, true);
+        device.control[11] = 4;
+        device.peer = failure != 0;
+        device.openingReply = failure == 3 ? 5 : 1;
+        device.openedReply = failure == 2 ? 5 : 1;
+        const Result result = openPipe(opening, memoryIo(memory), 88, 1024, true, true, 7, 100);
+        expect(result == (failure < 2 ? Result::TimedOut : Result::IoError) &&
+               opening.state == PipeState::Poisoned && device.delays <= 13,
+               "both opening phases share one finite deadline and peer RESET is never accepted");
+        const unsigned writes = device.writes;
+        expect(openPipe(opening, memoryIo(memory), 88, 1024, true, true, 7, 100) == Result::NotReady &&
+               device.writes == writes, "failed two-phase opening cannot be silently retried");
+    }
+}
+
+void testIdleRetirement()
+{
+    for (u32 mutation = 0; mutation < 9; ++mutation) {
+        Device device;
+        device.closingIdle = true;
+        MemoryBinding binding = {};
+        SmdPipe pipe = {};
+        observeMemory(binding, device.layout, device.access());
+        claimMemory(binding, true, true);
+        openPipe(pipe, memoryIo(binding), 88, 1024, true, true, 20, 100);
+        closePipe(pipe, 20, 100);
+        switch (mutation) {
+        case 0: device.control[0] = 2; break;
+        case 1: device.control[11] = 1; break;
+        case 2: device.control[1] = 1; break;
+        case 3: device.control[12] = 1; break;
+        case 4: device.control[21] = 4; break;
+        case 5: device.control[10] = 4; break;
+        case 6: device.attributes = 0xff; break;
+        case 7: device.failRead = true; break;
+        case 8: device.mutateAfterDelay = device.delays + 7; break;
+        }
+        const unsigned writes = device.writes;
+        expect(retireMemory(binding, pipe) != Result::Ok && binding.state == MemoryState::Poisoned &&
+               device.writes == writes,
+               "retirement revalidates mappings and eight idle snapshots, refusing late data, DTR or state changes");
+        expect(!memoryIo(binding).notify(&binding), "uncertain retirement cannot perform any more native I/O");
+    }
 }
 
 void testNativeRoundTrip()
@@ -326,7 +483,8 @@ void testFailures()
 
 int main()
 {
-    testMappings(); testOwnership(); testNativeRoundTrip(); testFailures();
+    testMappings(); testOwnership(); testIdleHandoff(); testOpeningReplies(); testIdleRetirement();
+    testNativeRoundTrip(); testFailures();
     std::printf("Native SMD memory/handoff: %u checks, %u failures (simulated MMIO; no handset writes)\n", checks, failures);
     return failures ? 1 : 0;
 }

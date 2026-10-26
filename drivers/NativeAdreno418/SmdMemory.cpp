@@ -167,6 +167,7 @@ Result snapshotChannel(MemoryBinding &binding, ChannelSnapshot &snapshot)
 {
     snapshot = {};
     if (!accessible(binding)) { return Result::NotReady; }
+    if (!mappingsCurrent(binding)) { fail(binding); return Result::NotReady; }
     ChannelSnapshot candidate = {};
     if (!memoryBarrier(&binding)) { return Result::IoError; }
     for (u32 index = 0; index < 22; ++index) {
@@ -179,28 +180,34 @@ Result snapshotChannel(MemoryBinding &binding, ChannelSnapshot &snapshot)
     return Result::Ok;
 }
 
-bool closedAndEmpty(const ChannelSnapshot &snapshot, u32 fifoBytes)
+bool idleAndEmpty(const ChannelSnapshot &snapshot, u32 fifoBytes)
 {
     if (fifoBytes < 512 || fifoBytes > 65536 || (fifoBytes & (fifoBytes - 1))) { return false; }
+    if (snapshot.words[0] != 0 || (snapshot.words[11] != 0 && snapshot.words[11] != 4)) { return false; }
     for (u32 endpoint = 0; endpoint < 2; ++endpoint) {
         const u32 half = endpoint * 11;
         const u32 reader = snapshot.words[half + 9], writer = snapshot.words[half + 10];
-        if (snapshot.words[half] != 0 || snapshot.words[half + 1] != 0 || reader != writer ||
+        if (snapshot.words[half + 1] != 0 || reader != writer ||
             reader >= fifoBytes || (reader & 3)) { return false; }
     }
     return true;
 }
 
-Result claimMemory(MemoryBinding &binding, bool firmwareExited, bool exclusiveOwner)
+bool closedAndEmpty(const ChannelSnapshot &snapshot, u32 fifoBytes)
 {
-    if (binding.state != MemoryState::Observed) { return Result::NotReady; }
-    if (!firmwareExited || !exclusiveOwner) { return Result::Unowned; }
+    return snapshot.words[11] == 0 && idleAndEmpty(snapshot, fifoBytes);
+}
+
+namespace {
+
+Result stableIdle(MemoryBinding &binding)
+{
     if (!mappingsCurrent(binding)) { fail(binding); return Result::NotReady; }
     ChannelSnapshot previous = {};
     for (u32 sample = 0; sample < 8; ++sample) {
         ChannelSnapshot current = {};
         if (snapshotChannel(binding, current) != Result::Ok) { return Result::IoError; }
-        if (!closedAndEmpty(current, binding.layout.fifo.bytes / 2)) { return Result::NotReady; }
+        if (!idleAndEmpty(current, binding.layout.fifo.bytes / 2)) { return Result::NotReady; }
         if (sample) {
             for (u32 index = 0; index < 22; ++index) {
                 if (previous.words[index] != current.words[index]) { return Result::NotReady; }
@@ -209,16 +216,25 @@ Result claimMemory(MemoryBinding &binding, bool firmwareExited, bool exclusiveOw
         previous = current;
         if (sample != 7) { binding.access.delayUs(binding.access.context, 1000); }
     }
-    binding.state = MemoryState::Owned;
     return Result::Ok;
+}
+
+}
+
+Result claimMemory(MemoryBinding &binding, bool firmwareExited, bool exclusiveOwner)
+{
+    if (binding.state != MemoryState::Observed) { return Result::NotReady; }
+    if (!firmwareExited || !exclusiveOwner) { return Result::Unowned; }
+    const Result qualified = stableIdle(binding);
+    if (qualified == Result::Ok) { binding.state = MemoryState::Owned; }
+    return qualified;
 }
 
 Result retireMemory(MemoryBinding &binding, const SmdPipe &pipe)
 {
     if (binding.state != MemoryState::Owned || pipe.state != PipeState::Closed) { return Result::NotReady; }
-    ChannelSnapshot snapshot = {};
-    if (snapshotChannel(binding, snapshot) != Result::Ok) { return Result::IoError; }
-    if (!closedAndEmpty(snapshot, binding.layout.fifo.bytes / 2)) { fail(binding); return Result::NotReady; }
+    const Result qualified = stableIdle(binding);
+    if (qualified != Result::Ok) { fail(binding); return qualified; }
     binding.state = MemoryState::Retired;
     return Result::Ok;
 }

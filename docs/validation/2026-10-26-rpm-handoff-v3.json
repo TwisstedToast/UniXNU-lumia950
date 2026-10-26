@@ -1,0 +1,49 @@
+{
+  "date": "2026-10-26",
+  "scope": "Handle the handset's idle CLOSED/CLOSING boundary without resetting unread data or bypassing ownership checks",
+  "prior_handset_evidence": "../hardware/2026-10-26-rpm-handoff-v2.json",
+  "source_sha256": {
+    "drivers/NativeAdreno418/SmdMemory.cpp": "509fede779a11df54d3a918874ff3baf0a37508b1cd46fa3ad0271c2b0b69743",
+    "drivers/NativeAdreno418/SmdMemory.h": "2d885cd20441df6e63ea20b15480da048fac32d33370b118479ba22f54b0c15b",
+    "drivers/NativeAdreno418/SmdPipe.cpp": "56eb9d2a5862646c1674dfe7b3cc4aa052407080fb94756c14f7d3bd62b48a02",
+    "tools/uefi-probe/LumiaRpmHandoff.cpp": "463e4ce855a71ece36d9e8a6db4fd4c5fe7dd16ba30223cb9a11333e808c000b"
+  },
+  "changes": [
+    "Claim requires local CLOSED, peer CLOSED/CLOSING, both DTR signals zero and eight identical empty snapshots after firmware exit and mapping/ownership qualification",
+    "Strict closedAndEmpty remains distinct from idleAndEmpty; the peer state is never overwritten to manufacture CLOSED",
+    "Opening accepts peer OPENING or OPENED, then waits for peer OPENED/DTR and zero indices under the same finite poll budget",
+    "Local close accepts an idle CLOSING peer; retirement repeats mapping and eight-snapshot qualification and only stops local access",
+    "The final screen reports both DTR signals, binding state, remote state-update flag and last-snapshot validity",
+    "Every snapshot revalidates Device mappings before control reads, including the first snapshot after ExitBootServices and before claim polling"
+  ],
+  "validation": {
+    "reproduction_before_fix": "310 simulated checks, 10 failures including the photographed state pair and two-phase opening",
+    "native_smd_memory_and_teardown": "685 ASan/UBSan checks, zero failures; simulated peer and MMIO",
+    "rpm_and_smd_regression": "190 ASan/UBSan checks, zero failures",
+    "gpu_backend_regression": "304 simulated checks, zero failures",
+    "gpu_tool_regression": "7 Python tests passed",
+    "efi_reservations": "38 synthetic memory-map checks, zero failures",
+    "gcd_discovery": "30 mocked DXE checks, zero failures",
+    "report_and_clock_regression": "409 mocked checks, zero failures",
+    "smem_discovery_regression": "66 mocked checks, zero failures",
+    "aarch64_efi_crosscompile": true,
+    "other_three_efi_applications_byte_identical_to_v2": true,
+    "strict_conversion_warnings": "SmdMemory.cpp and SmdPipe.cpp pass -Wconversion -Wsign-conversion -Werror",
+    "qemu_platform_refusal_and_return": [2, 3],
+    "qemu_emulates_lumia_rpm": false,
+    "native_xnu_abi_compile_of_v3": "Pending a source-revision build"
+  },
+  "efi_artifact": {
+    "name": "LumiaRpmHandoff.efi",
+    "bytes": 24576,
+    "sha256": "132629a1c1caaf452da96cd14eb8cc32e04128d902bb032486e7de042346bff8"
+  },
+  "runtime_status": {
+    "handset_v3_executed": false,
+    "handset_native_channel_open_close_qualified": false,
+    "rpm_resource_requests_sent_by_application": false,
+    "gpu_frame_observed": false,
+    "60fps_observed": false,
+    "ios_boot_observed": false
+  }
+}
