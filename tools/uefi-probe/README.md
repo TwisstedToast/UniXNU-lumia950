@@ -147,9 +147,14 @@ were empty, but v2's stricter claim refused the peer state. V3 accepts this idle
 only with exclusive ownership, valid mappings, local DTR zero and eight identical
 empty snapshots. The retrieved preflight also shows the CLOSING peer retaining DSR 1;
 that valid boolean flag is accepted only in CLOSING, not mistaken for an open channel.
-A CLOSED peer still requires DSR zero. V3 also handles peer `OPENING -> OPENED` as two phases under one deadline,
-and reports post-exit DTR, snapshot validity and memory-binding state. No peer state or
-unread FIFO is overwritten. V3's native handshake is not yet qualified on the handset.
+A CLOSED peer still requires DSR zero. V3 also handles peer `OPENING -> OPENED` as two
+phases under one deadline, and reports post-exit DTR, snapshot validity and memory-binding
+state. No peer state or unread FIFO is overwritten. The user has now reported
+`NATIVE RPM CHANNEL OK` from the installed v3 image: claim, open, close and retirement
+passed according to that success heading. No photograph or raw final fields were supplied,
+so no particular final DTR or peer-state value is claimed. This covers one standalone
+polling run, not packet transfer, RPM ACKs, resource votes or native XNU activation.
+See [the handset record](../../docs/hardware/2026-10-26-rpm-handoff-v3.json).
 
 At `RPM HANDOFF READY`, **Volume Up starts**; any other key cancels. The test disables
 the watchdog, captures a fresh memory map and exits boot services. It then masks interrupts,

@@ -1,0 +1,47 @@
+{
+  "date": "2026-10-26",
+  "device": "Microsoft Lumia 950, MSM8992",
+  "application": "Native RPM handoff v3",
+  "source_commit": "36b5288b9b40dc13312ac139cf6fae90208f634d",
+  "efi_sha256": "b782ee89bb670a62bf48de079554b94d43c22944ed24add723d93aac82ee34fc",
+  "efi_bytes": 24576,
+  "evidence": {
+    "kind": "User-reported final screen heading after booting the installed v3 diagnostic",
+    "verbatim_user_message": "native rpm channel ok",
+    "normalized_heading": "NATIVE RPM CHANNEL OK",
+    "photograph_received": false,
+    "raw_post_exit_state_values_received": false,
+    "independently_observed_by_host": false,
+    "installation_independently_verified": "Both named and fallback EFI loaders matched the recorded hash after a fresh read-only remount before the test"
+  },
+  "results_inferred_from_success_heading": {
+    "exit_boot_services_returned_success": true,
+    "claim": "OK",
+    "open": "OK",
+    "close": "OK",
+    "retire": "OK",
+    "reason": "The installed application's green success heading is selected only when all four native stages return OK",
+    "device_mapping_revalidation": "Passed for the control, FIFO and IPC apertures",
+    "native_ipc_notifications": "The opener and closer performed their ordered BIT0 notifications without firmware calls",
+    "peer_opened_state_and_dsr": "The open completion gate requires peer OPENED, asserted DSR and zero indices",
+    "final_idle_state": "Local CLOSED with peer CLOSED/DSR zero or CLOSING with a boolean DSR, both FIFOs empty and eight stable snapshots",
+    "exact_final_peer_state_and_dsr": "Not reported; no particular permitted value is claimed",
+    "shared_physical_storage_freed": false
+  },
+  "qualification_scope": {
+    "single_handset_run_reported": true,
+    "standalone_efi_application_after_firmware_exit": true,
+    "firmware_mappings_retained": true,
+    "interrupts_masked_with_polling": true,
+    "native_xnu_driver_activation_tested": false,
+    "native_irq_delivery_tested": false,
+    "rpm_packet_transmit_receive_tested": false,
+    "rpm_correlated_ack_tested": false,
+    "rpm_resource_vote_tested": false,
+    "gpu_power_on_tested": false,
+    "gpu_frame_observed": false,
+    "60fps_observed": false,
+    "ios_boot_observed": false
+  },
+  "next_gate": "Qualify the shared resource-vote ownership/baseline policy and actual Lumia supply/clock profile before native RPM resource requests; require a correlated ACK without mistaking it for measured GPU power or rendering"
+}

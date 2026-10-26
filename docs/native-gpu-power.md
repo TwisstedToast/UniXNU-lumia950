@@ -88,16 +88,17 @@ request encoding, ACK decoding and a serialized resource transaction engine:
 - Adoption accepts only an already-open, empty channel. Native opening accepts only
   an exclusively owned, idle, quiescent channel: local CLOSED, peer CLOSED or CLOSING,
   local DTR zero and both FIFOs empty. A CLOSED peer requires DSR zero; the handset's
-  CLOSING peer may retain its boolean DSR flag without being an open channel. It performs a bounded
-  `CLOSED -> OPENING -> OPENED` polling handshake. Peer OPENING or OPENED acknowledges
+  CLOSING peer may retain its boolean DSR flag without being an open channel. It performs
+  a bounded `CLOSED -> OPENING -> OPENED` polling handshake. Peer OPENING or OPENED acknowledges
   the first phase; peer OPENED with DTR asserted is required to finish. Both phases share
   one poll budget. Each endpoint resets only its own indices after emptiness is checked.
   Resource traffic is disabled while opening. A failed handshake cannot be blindly
   retried on the same channel object.
 - Bounded native `OPENED -> CLOSING -> CLOSED` teardown accepts immediate CLOSED or
   CLOSING replies. After local CLOSED, a peer remaining CLOSING is a valid idle boundary
-  only with local DTR deasserted, a valid boolean peer DSR and both FIFOs empty. Teardown refuses unread data and poisons
-  uncertain completion; it never writes the peer state to manufacture CLOSED.
+  only with local DTR deasserted, a valid boolean peer DSR and both FIFOs empty. Teardown
+  refuses unread data and poisons uncertain completion; it never writes the peer state
+  to manufacture CLOSED.
   The polling opener/closer acknowledges the remote state-updated flags as their consumer.
   Closing a channel does **not** cancel RPM votes or establish that a rail can be released.
 
@@ -164,9 +165,18 @@ response to peer CLOSING; it does not wait for peer CLOSED. V3 handles that idle
 without changing the peer's state, discarding payload, or relaxing ownership, local DTR,
 empty FIFO, translation or stability checks. The firmware's packet-readiness predicate
 uses stream state, and its opener does not require the peer's DSR to be zero. V3 accepts
-a retained DSR only for CLOSING, never an active peer state or malformed flag. Its result includes both DTR/DSR signals and explicit
-last-snapshot validity. The first snapshot is captured immediately after firmware exit,
-before ownership polling. Successful native open/close still requires a new handset run.
+a retained DSR only for CLOSING, never an active peer state or malformed flag. Its result
+includes both DTR/DSR signals and explicit last-snapshot validity. The first snapshot is
+captured immediately after firmware exit, before ownership polling.
+
+The user has now reported **`NATIVE RPM CHANNEL OK`** from the installed v3 application.
+That success heading requires claim, open, close and retirement all to return OK: this
+is the first reported native post-firmware SMD open/close completion on this handset.
+The installer independently verified the exact EFI image before the test, but the host
+did not observe the result directly, and no photograph or raw final state values were
+provided. The result covers one polling run with inherited mappings, not XNU activation,
+IRQ delivery, packet transfer, a correlated RPM ACK or a resource vote. No GPU power or
+rendering test was performed. See `docs/hardware/2026-10-26-rpm-handoff-v3.json`.
 
 Both components are single-caller internals, not a user-client ABI. The owner must
 serialize callers/interrupt handlers and keep the mapped shared memory alive while the
@@ -208,16 +218,20 @@ into `LumiaGpuProbe`. The separate v3 metadata helper is linked and has run on t
 the normal probe and post-EBS display-test images remain unchanged. The updated XNU
 archive, including `RpmCore.o` and `SmdPipe.o`, compiled with the recorded ABI and linked
 in [run 40379567698](https://github.com/TwisstedToast/UniXNU-lumia950/actions/runs/40379567698),
-source `c76c869`. The native driver still does not activate these backends or publish a
+source `c76c869`. The latest handoff source, `36b5288`, also passed validate, EFI preflight,
+GICv2 emulation and the real XNU kernel job in
+[run 40394514004](https://github.com/TwisstedToast/UniXNU-lumia950/actions/runs/40394514004).
+The native driver still does not activate these backends or publish a
 GPU service. The kernel candidate is unqualified and has not been installed or booted.
 
 ## Remaining work before an actual accelerated image
 
-1. Discover and validate the handset's APPS-RPM SMEM channel, map its reserved buffers
-   and IPC notification register, and bind the native callbacks after firmware handoff.
-   V2 now proves post-exit control reads; V3's native one-shot open/close needs handset execution.
+1. Carry the reported standalone post-exit channel handoff into the native kernel owner,
+   qualifying its own mappings, caller serialization and IRQ/polling lifecycle. The EFI
+   one-shot open/close is user-reported successful, not a native IOKit runtime result.
    Only the word-access layout is implemented here; alternate layouts are refused.
-2. Implement the shared resource-vote/lease policy, qualify the actual graphics supply
+2. Prove packet transfer and a correlated RPM ACK after implementing the shared
+   resource-vote/lease policy and qualifying the actual graphics supply
    profile and parent rates, then sequence supplies, CX/GX GDSCs and the three branches.
    Preserve other consumers' votes; do not interpret a transport ACK as exclusive supply
    ownership. Verify the measured rail/clock state before reading GPU/SMMU windows.

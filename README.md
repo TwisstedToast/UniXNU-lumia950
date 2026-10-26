@@ -182,13 +182,14 @@ in that volume, so the volume buttons are only a menu input, not a way into a sh
 | UniXNU menu | drawn on the 1440x2560 panel in the portrait card layout, three action entries, volume keys move the selection; touch is not consumed |
 | DarwinBoot | `DarwinBoot.efi` builds standalone from its DSC and `scripts/stage-kernel.py` names it in the staged config; not yet loaded |
 | ADT | generated and checked on the host (11976 B, six CPUs, NVRAM proxy); not yet handed to a kernel |
-| XNU kernel | the updated native drivers compile and link on 16.x in [run 40379567698](https://github.com/TwisstedToast/UniXNU-lumia950/actions/runs/40379567698), source `c76c869`; merged with the 16.7.16 kexts, not loaded |
+| XNU kernel | the updated native drivers compile and link on 16.x in [run 40394514004](https://github.com/TwisstedToast/UniXNU-lumia950/actions/runs/40394514004), source `36b5288`; merged with the 16.7.16 kexts, not loaded |
 | Prelinked kernel | merged by the kernel job: 9 components, 12,882 rebindings, a sparse prelink index; the tool marks it unqualified and it has not run. The kernel stage takes that image without changing it |
 | XNU entry | the on-device EFI probe confirms EL1; the handoff photograph confirms CPU framebuffer writes after ExitBootServices with firmware mappings retained, not XNU entry or GPU acceleration |
 | Storage driver | shared command/PIO engine, 368 simulated transport checks, updated XNU wrapper ABI-compiled and linked in run 40379567698; not run on hardware |
 | Native GICv2 | hash-qualified ArmCpu integration ABI-compiled and linked; asynchronous timer/SGI/SPI tests pass in standalone QEMU with security extensions off/on; no XNU boot or handset IRQ result |
 | Display (`NativeMdss`) | rung 1 of 6: maps the MDP, MMSS, DSI0 and PHY windows, proves `gdsc_mdss` is on, then reads the MDSS/MDP revisions, the DSI controller's version and enable bits and the firmware's raw video-timing words. Publishes no framebuffer, never run on hardware |
 | GPU (`NativeAdreno418`) | rung 1 of 6 runs: maps the KGSL and MMSS windows, refuses to read a collapsed domain, reads the revision. Rungs 2–4 and the fence half of 5 exist as host-tested cores (`gdscrEnableValue`/`gdscrPollUntilOn`, `IommuCore`, `CommandStream`) and are not wired; rung 6 has a host checker for the addon blob but no plugin built for iOS 16. Built by the archive step, publishes no GPU service, never run on hardware |
+| Native RPM/SMD handoff | user reports `NATIVE RPM CHANNEL OK` from the independently installed v3 EFI image: post-firmware claim, native open/close and retirement passed; one polling run, no packet/ACK, resource vote or GPU power test. See [the handset record](docs/hardware/2026-10-26-rpm-handoff-v3.json) |
 | iOS visual effects | none, and blocked twice over: no display driver (blocker 3) and no Metal device (blocker 7). See "iOS visual effects" |
 | Root volume and userland | not started |
 
@@ -529,7 +530,7 @@ it, and do not reset what cannot be rebuilt.
 | Rung | What it proves | State |
 | --- | --- | --- |
 | 1 identity | the windows map, the domains are on, the revision answers | written, host-tested, and the only rung a driver runs |
-| 2 power | RPM vote, GDSC state machine, OxiLi clocks and the bus at a level | read-only rail/clock qualification is shared with the EFI probe; cold power, RPM and parent-clock votes remain unimplemented |
+| 2 power | RPM vote, GDSC state machine, OxiLi clocks and the bus at a level | standalone post-EBS RPM channel open/close is user-reported successful; packet/ACK, resource-vote ownership, the Lumia supply profile and GPU cold power remain unqualified |
 | 3 smmu | 4 KiB page tables and the contexts a buffer is reached through | `LpaeCore` and register-backed `SmmuContext` are implemented and simulation-tested, but not activated by the native driver or tested on the handset |
 | 4 ring | CP ring, write pointer, fences | `Submission` implements firmware download, ME initialization, ring wrap, synchronization, faults and bounded waits through hardware callbacks; no on-phone execution yet |
 | 5 blit | PM4 that clears or copies, confirmed by a fence | a bounded CP memory-write fill and full data verification exist as a bring-up workload; this is not yet a blitter or shader renderer |

@@ -31,7 +31,30 @@
     "strict_conversion_warnings": "SmdMemory.cpp and SmdPipe.cpp pass -Wconversion -Wsign-conversion -Werror",
     "qemu_platform_refusal_and_return": [2, 3],
     "qemu_emulates_lumia_rpm": false,
-    "native_xnu_abi_compile_of_v3": "Pending a source-revision build"
+    "native_xnu_abi_compile_of_v3": "Successful kernel job 121823889355 in run 40394514004, source 36b5288b9b40dc13312ac139cf6fae90208f634d; compilation/linking only, not a loadable or runtime-qualified image",
+    "source_revision_ci": {
+      "run": 40394514004,
+      "url": "https://github.com/TwisstedToast/UniXNU-lumia950/actions/runs/40394514004",
+      "source_commit": "36b5288b9b40dc13312ac139cf6fae90208f634d",
+      "validate": "success",
+      "efi_preflight": "success",
+      "gicv2_emulation": "success",
+      "kernel": "success",
+      "payload": "intentionally skipped",
+      "kernel_job": 121823889355,
+      "kernel_artifact": {
+        "id": 12685714137,
+        "bytes": 49146968,
+        "zip_sha256_from_github_metadata": "a54adc870b1a32c9fc2bdf3ef4789b91808c3168c6c4ba4859516c60dedc18ab",
+        "native_adreno_archive_sha256_from_ci_log": "ae3bc9ad0c984b90116a078acd102b5cc9a0e216d684585143f23b713dd54d29",
+        "native_smd_memory_and_pipe_objects_listed_in_archive": true,
+        "kernel_macho_sha256_from_ci_log": "d1d6644baa6ab0ce98573c203e876184412059f888d4aa04ad6349e47acac0a8",
+        "loadable": false,
+        "installed_on_handset": false,
+        "logs_and_metadata_archived_on_ssd": true,
+        "v3_artifact_zip_independently_downloaded": false
+      }
+    }
   },
   "efi_artifact": {
     "name": "LumiaRpmHandoff.efi",
@@ -39,8 +62,11 @@
     "sha256": "b782ee89bb670a62bf48de079554b94d43c22944ed24add723d93aac82ee34fc"
   },
   "runtime_status": {
-    "handset_v3_executed": false,
-    "handset_native_channel_open_close_qualified": false,
+    "handset_v3_executed": true,
+    "handset_native_channel_open_close_qualified": true,
+    "qualification_basis": "User-reported NATIVE RPM CHANNEL OK heading; detailed post-exit fields and a photograph were not provided",
+    "qualification_scope": "One standalone post-EBS polling run with firmware mappings retained; not XNU activation, packet traffic, RPM ACKs or GPU power",
+    "handset_evidence": "../hardware/2026-10-26-rpm-handoff-v3.json",
     "rpm_resource_requests_sent_by_application": false,
     "gpu_frame_observed": false,
     "60fps_observed": false,
