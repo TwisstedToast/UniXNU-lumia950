@@ -3,13 +3,13 @@
   "scope": "Handle the handset's idle CLOSED/CLOSING boundary without resetting unread data or bypassing ownership checks",
   "prior_handset_evidence": "../hardware/2026-10-26-rpm-handoff-v2.json",
   "source_sha256": {
-    "drivers/NativeAdreno418/SmdMemory.cpp": "509fede779a11df54d3a918874ff3baf0a37508b1cd46fa3ad0271c2b0b69743",
+    "drivers/NativeAdreno418/SmdMemory.cpp": "9c7574a460a8adaf476138d39fc44cd332e2e2d35b2463a6c12616f99afe6a03",
     "drivers/NativeAdreno418/SmdMemory.h": "2d885cd20441df6e63ea20b15480da048fac32d33370b118479ba22f54b0c15b",
-    "drivers/NativeAdreno418/SmdPipe.cpp": "56eb9d2a5862646c1674dfe7b3cc4aa052407080fb94756c14f7d3bd62b48a02",
+    "drivers/NativeAdreno418/SmdPipe.cpp": "e0a1e83b31ce72b76f08b77bdf2438067cd50bede2526c5961d52e4da05590ec",
     "tools/uefi-probe/LumiaRpmHandoff.cpp": "463e4ce855a71ece36d9e8a6db4fd4c5fe7dd16ba30223cb9a11333e808c000b"
   },
   "changes": [
-    "Claim requires local CLOSED, peer CLOSED/CLOSING, both DTR signals zero and eight identical empty snapshots after firmware exit and mapping/ownership qualification",
+    "Claim requires local CLOSED/DTR zero, peer CLOSED/DSR zero or CLOSING with a valid boolean DSR, and eight identical empty snapshots after firmware exit and mapping/ownership qualification",
     "Strict closedAndEmpty remains distinct from idleAndEmpty; the peer state is never overwritten to manufacture CLOSED",
     "Opening accepts peer OPENING or OPENED, then waits for peer OPENED/DTR and zero indices under the same finite poll budget",
     "Local close accepts an idle CLOSING peer; retirement repeats mapping and eight-snapshot qualification and only stops local access",
@@ -18,7 +18,7 @@
   ],
   "validation": {
     "reproduction_before_fix": "310 simulated checks, 10 failures including the photographed state pair and two-phase opening",
-    "native_smd_memory_and_teardown": "685 ASan/UBSan checks, zero failures; simulated peer and MMIO",
+    "native_smd_memory_and_teardown": "820 ASan/UBSan checks, zero failures; simulated peer and MMIO",
     "rpm_and_smd_regression": "190 ASan/UBSan checks, zero failures",
     "gpu_backend_regression": "304 simulated checks, zero failures",
     "gpu_tool_regression": "7 Python tests passed",
@@ -36,7 +36,7 @@
   "efi_artifact": {
     "name": "LumiaRpmHandoff.efi",
     "bytes": 24576,
-    "sha256": "132629a1c1caaf452da96cd14eb8cc32e04128d902bb032486e7de042346bff8"
+    "sha256": "b782ee89bb670a62bf48de079554b94d43c22944ed24add723d93aac82ee34fc"
   },
   "runtime_status": {
     "handset_v3_executed": false,

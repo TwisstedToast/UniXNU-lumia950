@@ -184,10 +184,12 @@ bool idleAndEmpty(const ChannelSnapshot &snapshot, u32 fifoBytes)
 {
     if (fifoBytes < 512 || fifoBytes > 65536 || (fifoBytes & (fifoBytes - 1))) { return false; }
     if (snapshot.words[0] != 0 || (snapshot.words[11] != 0 && snapshot.words[11] != 4)) { return false; }
+    if (snapshot.words[1] != 0 || snapshot.words[12] > 1 ||
+        (snapshot.words[11] == 0 && snapshot.words[12] != 0)) { return false; }
     for (u32 endpoint = 0; endpoint < 2; ++endpoint) {
         const u32 half = endpoint * 11;
         const u32 reader = snapshot.words[half + 9], writer = snapshot.words[half + 10];
-        if (snapshot.words[half + 1] != 0 || reader != writer ||
+        if (reader != writer ||
             reader >= fifoBytes || (reader & 3)) { return false; }
     }
     return true;

@@ -28,7 +28,7 @@ struct Device {
     bool clearNsBit = false, unknownWorld = false, writeFault = false, fault = false, wrongPhysical = false;
     bool failTranslate = false, failRead = false, failWrite = false, failBarrier = false;
     bool peer = true, dirtyClose = false, remoteReset = false, delayedClose = false;
-    bool closingIdle = false, delayedOpen = false;
+    bool closingIdle = false, retainedClosingDsr = false, delayedOpen = false;
     u32 openingReply = 2, openedReply = 2, openedAfterDelay = 0;
     u64 faultAddress = 0;
     unsigned reads = 0, writes = 0, translations = 0, delays = 0, notifications = 0;
@@ -92,10 +92,10 @@ struct Device {
                 if (device.delayedOpen) { device.openedAfterDelay = device.delays + 2; }
             } else if (device.control[0] == 4) {
                 device.control[11] = device.remoteReset ? 5 : device.delayedClose || device.closingIdle ? 4 : 0;
-                device.control[12] = 0;
+                device.control[12] = device.control[11] == 4 && device.retainedClosingDsr ? 1 : 0;
             } else if (device.control[0] == 0) {
                 device.control[11] = device.closingIdle ? 4 : 0;
-                device.control[12] = 0;
+                device.control[12] = device.closingIdle && device.retainedClosingDsr ? 1 : 0;
                 if (device.dirtyClose) { device.control[21] = 4; }
             }
             return true;
@@ -260,20 +260,24 @@ void testOwnership()
 
 void testIdleHandoff()
 {
-    for (u32 local = 0; local < 8; ++local) {
-        for (u32 remote = 0; remote < 8; ++remote) {
-            Device device;
-            device.control[0] = local;
-            device.control[11] = remote;
-            device.control[9] = device.control[10] = 0x60;
-            device.control[20] = device.control[21] = 0x28;
-            const auto original = device.control;
-            MemoryBinding binding = {};
-            observeMemory(binding, device.layout, device.access());
-            const Result claimed = claimMemory(binding, true, true);
-            const bool idle = local == 0 && (remote == 0 || remote == 4);
-            expect((claimed == Result::Ok) == idle && device.control == original && device.writes == 0,
-                   "only local CLOSED with peer CLOSED/CLOSING and empty measured indices qualifies without writes");
+    for (u32 remoteDsr = 0; remoteDsr < 3; ++remoteDsr) {
+        for (u32 local = 0; local < 8; ++local) {
+            for (u32 remote = 0; remote < 8; ++remote) {
+                Device device;
+                device.control[0] = local;
+                device.control[11] = remote;
+                device.control[12] = remoteDsr;
+                device.control[9] = device.control[10] = 0x60;
+                device.control[20] = device.control[21] = 0x28;
+                const auto original = device.control;
+                MemoryBinding binding = {};
+                observeMemory(binding, device.layout, device.access());
+                const Result claimed = claimMemory(binding, true, true);
+                const bool idle = local == 0 && ((remote == 0 && remoteDsr == 0) ||
+                    (remote == 4 && remoteDsr <= 1));
+                expect((claimed == Result::Ok) == idle && device.control == original && device.writes == 0,
+                       "only idle state pairs qualify; a CLOSING peer may retain a boolean DSR, never an invalid value");
+            }
         }
     }
     for (u32 mutation = 0; mutation < 10; ++mutation) {
@@ -283,7 +287,7 @@ void testIdleHandoff()
         device.control[20] = device.control[21] = 0x28;
         switch (mutation) {
         case 0: device.control[1] = 1; break;
-        case 1: device.control[12] = 1; break;
+        case 1: device.control[12] = 2; break;
         case 2: device.control[10] += 4; break;
         case 3: device.control[21] += 4; break;
         case 4: device.control[9] = device.control[10] = 1024; break;
@@ -297,16 +301,18 @@ void testIdleHandoff()
         observeMemory(binding, device.layout, device.access());
         expect(claimMemory(binding, true, true) == Result::NotReady && device.writes == 0 &&
                binding.state == MemoryState::Observed,
-               "CLOSING peer does not excuse live DTR, unread data, invalid indices or changing metadata");
+               "CLOSING peer does not excuse active local DTR, invalid DSR, unread data or changing metadata");
     }
     for (u32 reply : {1u, 2u}) {
         for (bool closing : {false, true}) {
             Device device;
             device.control[11] = 4;
+            device.control[12] = 1;
             device.control[9] = device.control[10] = 0x60;
             device.control[20] = device.control[21] = 0x28;
             device.openingReply = reply;
             device.closingIdle = closing;
+            device.retainedClosingDsr = closing;
             MemoryBinding binding = {};
             SmdPipe pipe = {};
             observeMemory(binding, device.layout, device.access());
@@ -319,8 +325,8 @@ void testIdleHandoff()
                    "idle CLOSING peer reopens through either OPENING or OPENED acknowledgement");
             expect(closePipe(pipe, 20, 100) == Result::Ok && pipe.state == PipeState::Closed &&
                    device.control[0] == 0 && device.control[11] == (closing ? 4u : 0u) &&
-                   device.control[12] == 0 && device.notifications == 4,
-                   "native close accepts a deasserted, empty peer that remains CLOSING after local CLOSED");
+                   device.control[12] == (closing ? 1u : 0u) && device.notifications == 4,
+                   "native close accepts an empty CLOSING peer with the handset's retained DSR flag");
             expect(retireMemory(binding, pipe) == Result::Ok && binding.state == MemoryState::Retired,
                    "stable idle channel can retire local access without freeing its shared physical storage");
             for (const auto &operation : device.operations) {
@@ -370,6 +376,7 @@ void testIdleRetirement()
     for (u32 mutation = 0; mutation < 9; ++mutation) {
         Device device;
         device.closingIdle = true;
+        device.retainedClosingDsr = true;
         MemoryBinding binding = {};
         SmdPipe pipe = {};
         observeMemory(binding, device.layout, device.access());
@@ -380,7 +387,7 @@ void testIdleRetirement()
         case 0: device.control[0] = 2; break;
         case 1: device.control[11] = 1; break;
         case 2: device.control[1] = 1; break;
-        case 3: device.control[12] = 1; break;
+        case 3: device.control[12] = 2; break;
         case 4: device.control[21] = 4; break;
         case 5: device.control[10] = 4; break;
         case 6: device.attributes = 0xff; break;

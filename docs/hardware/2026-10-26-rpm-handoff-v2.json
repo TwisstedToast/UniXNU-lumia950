@@ -9,7 +9,30 @@
     "filename": "PXL_20261026_200128103.jpg",
     "sha256": "130730c2a9178099f3788b2d27afa587d43eb11dc742752e8f01434249ceccd8",
     "heading": "User reported RPM HANDOFF STOPPED; the supplied photograph crops the heading",
-    "saved_preflight_retrieved": false
+    "saved_preflight_retrieved": true
+  },
+  "saved_preflights": {
+    "paths": ["EFI/LumiaProbe/gpu-report-03.txt", "EFI/LumiaProbe/gpu-report-04.txt"],
+    "each_bytes": 1637,
+    "identical_sha256": "5fb89bc19d15197c559b9ddf847dc71d7f580914d21d78a99ef2985cf3648795",
+    "retrieval": "Independently read from a fresh read-only USB mass-storage mount before v3 installation",
+    "device_translations": "Device-nGnRnE; control/FIFO PAR 0xfc428b00 and IPC PAR 0xf900db00 for both read and write",
+    "gcd_message_ram": {
+      "base": "0xfc428000", "bytes": "0x8000", "type": 3,
+      "capabilities": "0xc000000000000001", "attributes": "0x1"
+    },
+    "gcd_ipc_region": {
+      "base": "0xf9000000", "bytes": "0x113000", "type": 3,
+      "capabilities": "0xc000000000000001", "attributes": "0x1"
+    },
+    "efi_mmio_listing": "NOT_COMPLETE",
+    "gcd_and_efi_reservations": "QUALIFIED",
+    "firmware_local_state": 0,
+    "firmware_remote_state": 4,
+    "firmware_local_dtr": 0,
+    "firmware_remote_dsr": 1,
+    "firmware_indices": "TX read/write 0x60; RX read/write 0x28",
+    "post_exit_values": "Not present in these files; cannot infer post-exit DSR from preflight"
   },
   "observations": {
     "claim": "NOT READY",
@@ -29,7 +52,7 @@
   "interpretation": {
     "exit_boot_services_returned_success": true,
     "exit_evidence": "The photographed nonzero endpoint/indices are drawn only on the native AfterExit path, entered after successful ExitBootServices",
-    "preflight_gates_passed": "Platform, Device translations, GCD classification and UEFI RAM-conflict checks necessarily passed; raw GCD descriptors await saved-report retrieval",
+    "preflight_gates_passed": "Platform, Device translations, GCD classification and UEFI RAM-conflict checks passed; raw GCD descriptors independently retrieved from both saved reports",
     "local_endpoint": "CLOSED",
     "remote_endpoint": "CLOSING",
     "fifo_occupancy": "Both directions empty: matching read/write indices, not unread responses",
@@ -41,7 +64,7 @@
     "firmware_exit_handler_may_write_channel": true
   },
   "next_revision": {
-    "claim_requires": "Successful firmware exit, exclusive caller ownership, revalidated Device mappings and eight identical empty snapshots with local CLOSED, peer CLOSED/CLOSING and both DTR signals zero",
+    "claim_requires": "Successful firmware exit, exclusive caller ownership, revalidated Device mappings and eight identical empty snapshots with local CLOSED/DTR zero, peer CLOSED/DSR zero or CLOSING with a boolean retained DSR",
     "open_requires": "An idle channel, bounded OPENING/OPENED handshake, peer OPENED with DTR asserted and zeroed indices before packet traffic",
     "retirement": "Local access only; never frees RPM-owned shared storage, cancels resource votes or proves a shared supply may be released",
     "additional_diagnostics": "Post-EBS DTR, last-snapshot validity, remote state-update flag and memory-binding state"

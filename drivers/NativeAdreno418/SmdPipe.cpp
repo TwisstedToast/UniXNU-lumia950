@@ -117,7 +117,8 @@ Result openPipe(SmdPipe &pipe, const SmdIo &io, u32 controlBytes, u32 fifoBytes,
         !read(candidate, SmdSpace::Control, kStreamState, &local) || local != 0 ||
         !read(candidate, SmdSpace::Control, kHalfBytes + kStreamState, &remote) || (remote != 0 && remote != 4) ||
         !read(candidate, SmdSpace::Control, kDtr, &localDtr) || localDtr != 0 ||
-        !read(candidate, SmdSpace::Control, kHalfBytes + kDtr, &remoteDtr) || remoteDtr != 0 ||
+        !read(candidate, SmdSpace::Control, kHalfBytes + kDtr, &remoteDtr) || remoteDtr > 1 ||
+        (remote == 0 && remoteDtr != 0) ||
         !indices(candidate, 0, &reader, &writer) || reader != writer ||
         !indices(candidate, kHalfBytes, &reader, &writer) || reader != writer) {
         return Result::NotReady;
@@ -225,7 +226,7 @@ Result closePipe(SmdPipe &pipe, u32 pollBudget, u32 delayUs)
                 return Result::IoError;
             }
             localClosed = true;
-        } else if (localClosed && (remote == 0 || remote == 4) && remoteDtr == 0) {
+        } else if (localClosed && ((remote == 0 && remoteDtr == 0) || (remote == 4 && remoteDtr <= 1))) {
             if (!write(pipe, SmdSpace::Control, kHalfBytes + kStateUpdated, 0) ||
                 !io.barrier(io.context) || !indices(pipe, 0, &reader, &writer) || reader != writer ||
                 !indices(pipe, kHalfBytes, &reader, &writer) || reader != writer) {

@@ -144,8 +144,10 @@ UEFI RAM, loader, boot-services or runtime allocation. No GCD map is modified.
 V2 ran on the handset and reached native post-exit control reads. The result was local
 `CLOSED (0)`, peer `CLOSING (4)`, TX read/write `0x60` and RX read/write `0x28`: both FIFOs
 were empty, but v2's stricter claim refused the peer state. V3 accepts this idle boundary
-only with exclusive ownership, valid mappings, both DTR signals zero and eight identical
-empty snapshots. It also handles peer `OPENING -> OPENED` as two phases under one deadline,
+only with exclusive ownership, valid mappings, local DTR zero and eight identical
+empty snapshots. The retrieved preflight also shows the CLOSING peer retaining DSR 1;
+that valid boolean flag is accepted only in CLOSING, not mistaken for an open channel.
+A CLOSED peer still requires DSR zero. V3 also handles peer `OPENING -> OPENED` as two phases under one deadline,
 and reports post-exit DTR, snapshot validity and memory-binding state. No peer state or
 unread FIFO is overwritten. V3's native handshake is not yet qualified on the handset.
 
@@ -178,7 +180,7 @@ python3 scripts/test-probe-qemu.py --application rpm --esp out/rpm-handoff-v3/es
 ```
 
 QEMU exercises only the unsupported-platform return; the Lumia RPM is not emulated.
-The 685-check memory/handoff suite uses a simulated peer; no handset handshake success is
+The 820-check memory/handoff suite uses a simulated peer; no handset handshake success is
 claimed from those tests. The standalone app must be installed deliberately; selecting
 `PROBE_ENTRY` stages only an output directory and does not write a physical disk.
 

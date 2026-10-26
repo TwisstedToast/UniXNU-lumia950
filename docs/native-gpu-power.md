@@ -87,7 +87,8 @@ request encoding, ACK decoding and a serialized resource transaction engine:
   cached mappings with no coherency implementation are refused.
 - Adoption accepts only an already-open, empty channel. Native opening accepts only
   an exclusively owned, idle, quiescent channel: local CLOSED, peer CLOSED or CLOSING,
-  both DTR signals zero and both FIFOs empty. It performs a bounded
+  local DTR zero and both FIFOs empty. A CLOSED peer requires DSR zero; the handset's
+  CLOSING peer may retain its boolean DSR flag without being an open channel. It performs a bounded
   `CLOSED -> OPENING -> OPENED` polling handshake. Peer OPENING or OPENED acknowledges
   the first phase; peer OPENED with DTR asserted is required to finish. Both phases share
   one poll budget. Each endpoint resets only its own indices after emptiness is checked.
@@ -95,7 +96,7 @@ request encoding, ACK decoding and a serialized resource transaction engine:
   retried on the same channel object.
 - Bounded native `OPENED -> CLOSING -> CLOSED` teardown accepts immediate CLOSED or
   CLOSING replies. After local CLOSED, a peer remaining CLOSING is a valid idle boundary
-  only with DTR deasserted and both FIFOs empty. Teardown refuses unread data and poisons
+  only with local DTR deasserted, a valid boolean peer DSR and both FIFOs empty. Teardown refuses unread data and poisons
   uncertain completion; it never writes the peer state to manufacture CLOSED.
   The polling opener/closer acknowledges the remote state-updated flags as their consumer.
   Closing a channel does **not** cancel RPM votes or establish that a rail can be released.
@@ -151,13 +152,19 @@ mismatch was not captured by v1. V2 adds GCD classification and holds failures o
 V2 has now successfully exited firmware on the handset, but its claim refused local
 **CLOSED (0), peer CLOSING (4)**. TX read/write both equal **`0x60`** and RX read/write both
 equal **`0x28`**: neither FIFO contains unread data. No native channel write or open was
-attempted. DTR was not displayed, so no DTR value is inferred from this photograph.
+attempted. DTR was not displayed, so no post-exit DTR value is inferred from this photograph.
+The subsequently retrieved `gpu-report-03.txt` and `gpu-report-04.txt` are identical v2
+preflights: local CLOSED/DTR 0, peer CLOSING/DSR **1**, with the same empty indices.
+Both confirm the live GCD descriptors and Device translations. These are pre-exit
+measurements, not substitutes for the post-exit screen.
 See `docs/hardware/2026-10-26-rpm-handoff-v2.json`.
 
 The matching firmware exits its close handler as soon as it publishes local CLOSED in
 response to peer CLOSING; it does not wait for peer CLOSED. V3 handles that idle boundary
-without changing the peer's state, discarding payload, or relaxing ownership, DTR, empty
-FIFO, translation or stability checks. Its result includes both DTR signals and explicit
+without changing the peer's state, discarding payload, or relaxing ownership, local DTR,
+empty FIFO, translation or stability checks. The firmware's packet-readiness predicate
+uses stream state, and its opener does not require the peer's DSR to be zero. V3 accepts
+a retained DSR only for CLOSING, never an active peer state or malformed flag. Its result includes both DTR/DSR signals and explicit
 last-snapshot validity. The first snapshot is captured immediately after firmware exit,
 before ownership polling. Successful native open/close still requires a new handset run.
 
@@ -181,9 +188,10 @@ FIFO wrap directions, partial frames, producer/notification ordering, invalid in
 failed publication, native reopen and multiple correlated transactions across a simulated
 peer. Tests do not send real votes or power the handset GPU.
 
-The memory/teardown suite adds 685 checks for translation and reservation-independent
+The memory/teardown suite adds 820 checks for translation and reservation-independent
 binding, endpoint write ownership, delayed close, timeout, reset, changing metadata and
-mapping retirement. Regressions cover all 64 combinations of endpoint states 0 through 7,
+mapping retirement. Regressions cover all 64 combinations of endpoint states 0 through 7
+with each of three peer DSR values (0, 1, invalid 2),
 the photographed empty nonzero indices, CLOSED/CLOSING handoff, both opening phases,
 delayed DTR, a peer remaining CLOSING, and late changes during retirement. Another 38
 mocked EFI memory-map checks cover descriptor stride,
