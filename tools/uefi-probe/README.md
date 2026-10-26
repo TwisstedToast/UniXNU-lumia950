@@ -124,11 +124,22 @@ after firmware exit. The normal diagnostic remains the default fallback unless
 channel needed to request GPU resources after firmware exit. **It does not power the
 GPU, render a GPU frame, boot XNU or provide iOS.** See [native power work](../../docs/native-gpu-power.md).
 
-Before enabling anything, it requires the measured channel-4 profile, nonsecure Device
-stage-1 read/write translations, UC-capable EFI MMIO reservations, and the expected Lumia
+Before enabling anything, it requires the measured channel-4 profile, Device
+stage-1 read/write translations, UC-capable DXE GCD MMIO classification, no UEFI RAM
+allocation conflicts, and the expected Lumia
 950 platform. It saves its preflight, including raw PAR values and firmware-side channel
 states/indices, to a new `gpu-report-NN.txt` using the existing append-only report writer.
 There are no channel, FIFO or IPC writes while firmware services are live.
+
+Version 2 holds early failures on screen with a failed-stage/status marker rather than
+immediately falling back to the UEFI menu. It also corrects v1's invalid `PAR_EL1.NS`
+requirement: that bit is UNKNOWN for Non-secure translations. The caller must separately
+qualify its Non-secure EL1 boot context; the bit is not used as proof of either world.
+The recovered v1 report confirms a different actual stop: valid translations passed,
+but the strict UEFI MMIO-descriptor requirement failed. V2 queries the separate DXE GCD
+resource map and logs its classification/capabilities instead of assuming every MMIO
+range appears with UC attributes in `GetMemoryMap`. It still refuses any overlapping
+UEFI RAM, loader, boot-services or runtime allocation. No GCD map is modified.
 
 At `RPM HANDOFF READY`, **Volume Up starts**; any other key cancels. The test disables
 the watchdog, captures a fresh memory map and exits boot services. It then masks interrupts,
@@ -149,15 +160,15 @@ are kept; this does not qualify XNU's future mappings, native IRQs or resource-v
 
 ```sh
 UNIXNU_EDK2=/path/to/edk2 PROBE_ENTRY=LumiaRpmHandoff \
-    bash scripts/build-probe.sh out/rpm-handoff-v1
+    bash scripts/build-probe.sh out/rpm-handoff-v2
 bash scripts/test-gpu.sh
 UNIXNU_EDK2=/path/to/edk2 bash scripts/test-report.sh
-python3 scripts/test-probe-qemu.py --application rpm --esp out/rpm-handoff-v1/esp \
+python3 scripts/test-probe-qemu.py --application rpm --esp out/rpm-handoff-v2/esp \
     --firmware /path/to/edk2-aarch64-code.fd --gic-version 2
 ```
 
 QEMU exercises only the unsupported-platform return; the Lumia RPM is not emulated.
-The 170-check memory/handoff suite uses a simulated peer; no handset handshake success is
+The 171-check memory/handoff suite uses a simulated peer; no handset handshake success is
 claimed from those tests. The standalone app must be installed deliberately; selecting
 `PROBE_ENTRY` stages only an output directory and does not write a physical disk.
 

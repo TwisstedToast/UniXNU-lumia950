@@ -101,8 +101,12 @@ request encoding, ACK decoding and a serialized resource transaction engine:
   Physical/virtual range overflow, overlap, a non-88-byte control block, and malformed
   FIFO geometry are refused before translation or dereference.
 - First/last words and every crossed 4 KiB boundary must translate to the requested
-  nonsecure physical address for both EL1 reads and writes. Only Device-nGnRnE and
+  physical address for both EL1 reads and writes. Only Device-nGnRnE and
   Device-nGnRE qualify; cached, Normal-NC and gathering mappings are not silently accepted.
+- The platform must separately qualify Non-secure EL1 execution. `PAR_EL1.NS` is
+  architecturally UNKNOWN for Non-secure translations, so neither value proves the
+  execution world. V2 replaces v1's invalid NS-bit requirement with an explicit platform
+  contract, covered by positive NS-bit-zero and unknown-world refusal regressions.
 - Initial observation permits control-block reads only. Firmware exit, exclusive caller
   ownership, revalidated mappings and eight identical CLOSED/empty snapshots are required
   before writes. Stable snapshots are a quiescence check, not a substitute for ownership.
@@ -113,9 +117,13 @@ request encoding, ACK decoding and a serialized resource transaction engine:
 
 `tools/uefi-probe/LumiaRpmHandoff.cpp` is the first real AArch64 caller of this adapter.
 It is a **separate opt-in application**, not the v3 metadata probe. It requires the exact
-measured channel profile, the Lumia MSM8992 MADT, EL1, an active MMU, the timer, a valid
-framebuffer and non-reclaimable, UC-capable EFI MMIO descriptors covering both allocations
-and IPC. `AT S1E1R/W` checks inherited stage-1 mappings without loading from the doorbell.
+measured channel profile, the Lumia MSM8992 MADT, EL1, an active MMU, the timer and a valid
+framebuffer. V2 queries the DXE GCD resource map for live MMIO classification and UC
+capabilities at both boundaries of each allocation and IPC. It independently rejects
+overlapping UEFI RAM/loader/boot-services/runtime allocations, including duplicate or
+malformed descriptors. MMIO need not be redundantly listed in the UEFI memory map when
+GCD has qualified it; neither cached mappings nor actual RAM conflicts are excused.
+`AT S1E1R/W` checks inherited stage-1 mappings without loading from the doorbell.
 Those checks do not prove a successful bus transaction or qualify a future XNU page table.
 
 Volume Up deliberately exits firmware. With interrupts masked and no other native
@@ -129,7 +137,11 @@ the adapter or publish a GPU service.
 
 Only pre-exit measurements can be saved using EFI file services. Post-exit results and
 indices are drawn by the CPU, with a heartbeat, and must be observed on the screen.
-Neither the new application nor its native handshake has run on the handset yet.
+V1 has now run on the handset: its saved report confirms valid Device translations but
+the strict UEFI MMIO-descriptor check rejected the map, before any channel read, write or
+firmware exit. That explains the immediate return to the menu. The exact descriptor
+mismatch was not captured by v1. V2 adds GCD classification and holds failures on screen;
+its native handshake remains untested. See `docs/hardware/2026-10-26-rpm-handoff-v1.json`.
 
 Both components are single-caller internals, not a user-client ABI. The owner must
 serialize callers/interrupt handlers and keep the mapped shared memory alive while the
@@ -151,11 +163,14 @@ FIFO wrap directions, partial frames, producer/notification ordering, invalid in
 failed publication, native reopen and multiple correlated transactions across a simulated
 peer. Tests do not send real votes or power the handset GPU.
 
-The memory/teardown suite adds 170 checks for translation and reservation-independent
+The memory/teardown suite adds 171 checks for translation and reservation-independent
 binding, endpoint write ownership, delayed close, timeout, reset, changing metadata and
-mapping retirement. Another 25 mocked EFI memory-map checks cover descriptor stride,
+mapping retirement. Another 38 mocked EFI memory-map checks cover descriptor stride,
 unaligned input, reservation bounds, duplicate/overlapping descriptors and reclaimable
-memory refusal. QEMU GICv2/v3 boots verify that the actual new EFI image refuses unsupported
+memory refusal, including GCD-qualified MMIO absent from the UEFI map. Thirty mocked DXE
+checks cover table discovery, ABI slots, start/end coverage, UC capability, invalid resource
+types, failures and changing descriptors. No GCD map mutation service is called.
+QEMU GICv2/v3 boots verify that the actual new EFI image refuses unsupported
 hardware before SMEM lookup, translation, MMIO access or firmware exit; QEMU does not emulate
 the Lumia RPM peer. See [the handoff instructions](../tools/uefi-probe/README.md#native-rpm-handoff-test).
 
@@ -197,6 +212,9 @@ GPU service. The kernel candidate is unqualified and has not been installed or b
 - [Firmware fallback SMEM and IPC configuration](https://github.com/WOA-Project/Lumia950XLPkg/blob/0e7e24a/Shared.dsc.inc)
 - [Matching firmware RPM message-RAM and MMIO classification](https://github.com/WOA-Project/Lumia950XLPkg/blob/0e7e24a/Include/Configuration/DeviceMemoryMap.h)
 - [Arm address translation instructions and PAR](https://developer.arm.com/-/media/Arm%20Developer%20Community/PDF/Learn%20the%20Architecture/LearnTheArchitecture-MemoryManagement-101811_0100_00_en.pdf)
+- [Arm PAR_EL1 fields, including UNKNOWN NS in Non-secure state](https://documentation-service.arm.com/static/5e7b6c837158f500bd5c03fc)
+- [UEFI PI DXE GCD resource map and read-only descriptor service](https://uefi.org/specs/PI/1.9/V2_Services_DXE_Services.html)
+- [UEFI PI DXE service-table discovery and ABI](https://uefi.org/specs/PI/1.9/V2_UEFI_System_Table.html)
 - [Published Lumia 950 GPU resources and PEP data](https://github.com/WOA-Project/Lumia950XLPkg/blob/0e7e24a/AcpiTables/8992/src/DSDT.asl)
 - [Reference SMD polling and ExitBootServices closure](https://github.com/WOA-Project/Lumia950XLPkg/blob/cfc68a4d19fc7e8645bff6d8fce7308ad8494a76/Driver/SmdRpmDxe/smd.c)
 - [Reference firmware RPM send/receive](https://github.com/WOA-Project/Lumia950XLPkg/blob/cfc68a4d19fc7e8645bff6d8fce7308ad8494a76/Driver/SmdRpmDxe/rpm-smd.c)

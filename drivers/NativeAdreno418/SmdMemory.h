@@ -19,6 +19,7 @@ struct MemoryAccess {
     bool (*write32)(void *, u64 address, u32 value);
     bool (*barrier)(void *);
     void (*delayUs)(void *, u32);
+    bool nonSecureEl1;
 };
 enum class MemoryState : u32 { Empty, Observed, Owned, Retired, Poisoned };
 struct MemoryBinding {

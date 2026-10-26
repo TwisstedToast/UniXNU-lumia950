@@ -46,7 +46,7 @@ bool translated(const MemoryAccess &access, const MemoryRegion &region)
         for (u32 mode = 0; mode < 2; ++mode) {
             u64 par = 0;
             if (!access.translate(access.context, address, mode != 0, &par) || (par & 1) ||
-                !(par & (1ull << 9)) || (par & 0x0000fffffffff000ull) != (expected & ~0xfffull) ||
+                (par & 0x0000fffffffff000ull) != (expected & ~0xfffull) ||
                 (address & 0xfff) != (expected & 0xfff)) { return false; }
             const u32 attributes = static_cast<u32>(par >> 56);
             if (attributes != 0 && attributes != 4) { return false; }
@@ -156,6 +156,7 @@ Result observeMemory(MemoryBinding &binding, const MemoryLayout &layout,
     if (binding.state != MemoryState::Empty) { return Result::NotReady; }
     if (!validLayout(layout) || !access.translate || !access.read32 || !access.write32 ||
         !access.barrier || !access.delayUs) { return Result::Invalid; }
+    if (!access.nonSecureEl1) { return Result::Unowned; }
     MemoryBinding candidate = {layout, access, MemoryState::Observed};
     if (!mappingsCurrent(candidate)) { return Result::NotReady; }
     binding = candidate;

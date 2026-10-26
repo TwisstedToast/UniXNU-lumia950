@@ -30,3 +30,9 @@ mkdir -p "$OUT"
   "$ROOT/tools/uefi-probe/FirmwareMemory.cpp" \
   "$ROOT/tools/uefi-probe/Test/check-firmware-memory.cpp" -o "$OUT/check-firmware-memory"
 "$OUT/check-firmware-memory"
+"$CXX" -std=c++17 -fshort-wchar -Wall -Wextra -Werror -fsanitize=address,undefined \
+  -I "$EDK2/MdePkg/Include" -I "$EDK2/MdePkg/Include/$architecture" \
+  -I "$ROOT/drivers/NativeAdreno418" \
+  "$ROOT/tools/uefi-probe/FirmwareGcd.cpp" \
+  "$ROOT/tools/uefi-probe/Test/check-firmware-gcd.cpp" -o "$OUT/check-firmware-gcd"
+"$OUT/check-firmware-gcd"

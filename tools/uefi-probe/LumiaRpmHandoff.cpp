@@ -5,6 +5,7 @@
 
 #include "FirmwareSmem.h"
 #include "FirmwareMemory.h"
+#include "FirmwareGcd.h"
 #include "PlatformCheck.h"
 #include "ReportStore.h"
 #include "SmdMemory.h"
@@ -22,6 +23,8 @@ EFI_SYSTEM_TABLE *firmware;
 char report[8192];
 UINTN reportBytes;
 bool reportOverflow;
+bool saveAttempted;
+const char *preflightStage;
 UINT64 timerFrequency;
 
 void Print(const char *text)
@@ -172,6 +175,7 @@ const char *ResultName(Result result)
 
 void SavePreflight(EFI_HANDLE image)
 {
+    saveAttempted = true;
     ProbeReportResult saved = {};
     if (reportOverflow) { saved.status = EFI_BAD_BUFFER_SIZE; }
     else { ProbeSaveReport(firmware->BootServices, image, report, reportBytes, &saved); }
@@ -317,15 +321,17 @@ extern "C" void *memcpy(void *destination, const void *source, size_t bytes)
     return destination;
 }
 
-extern "C" EFI_STATUS EFIAPI UefiMain(EFI_HANDLE image, EFI_SYSTEM_TABLE *systemTable)
+static EFI_STATUS Run(EFI_HANDLE image, EFI_SYSTEM_TABLE *systemTable)
 {
     if (!systemTable || !systemTable->BootServices || !systemTable->ConOut || !systemTable->ConIn ||
         !systemTable->ConIn->WaitForKey) { return EFI_INVALID_PARAMETER; }
     firmware = systemTable;
     reportBytes = 0;
     reportOverflow = false;
+    saveAttempted = false;
+    preflightStage = "PLATFORM";
     firmware->ConOut->ClearScreen(firmware->ConOut);
-    Print("LUMIA 950 | NATIVE RPM HANDOFF v1\r\n");
+    Print("LUMIA 950 | NATIVE RPM HANDOFF v2\r\n");
     Print("Optional post-EBS channel open/close; NO RPM packets or GPU writes.\r\n");
     if (!LumiaPlatform()) {
         Print("PLATFORM_UNSUPPORTED: no SMEM, translation or MMIO access.\r\n");
@@ -335,6 +341,7 @@ extern "C" EFI_STATUS EFIAPI UefiMain(EFI_HANDLE image, EFI_SYSTEM_TABLE *system
         Print("Returning to firmware.\r\n");
         return status;
     }
+    preflightStage = "CPU_CONTEXT";
     UINT64 currentEl, control, affinity, identity;
     asm volatile("mrs %0, currentel\nmrs %1, sctlr_el1\nmrs %2, cntfrq_el0\nmrs %3, mpidr_el1\nmrs %4, midr_el1"
                  : "=r"(currentEl), "=r"(control), "=r"(timerFrequency), "=r"(affinity), "=r"(identity));
@@ -349,6 +356,7 @@ extern "C" EFI_STATUS EFIAPI UefiMain(EFI_HANDLE image, EFI_SYSTEM_TABLE *system
         SavePreflight(image);
         return EFI_UNSUPPORTED;
     }
+    preflightStage = "SMEM_PROFILE";
     const ProbeFirmwareSmem smem = ProbeFindFirmwareSmem(firmware->BootServices);
     PrintHex("SMEM_STATUS", smem.status);
     PrintHex("RPM_CHANNEL", smem.channelId);
@@ -368,6 +376,7 @@ extern "C" EFI_STATUS EFIAPI UefiMain(EFI_HANDLE image, EFI_SYSTEM_TABLE *system
     const MemoryLayout layout = {{smem.controlAddress, smem.controlAddress, smem.controlBytes},
                                  {smem.fifoAddress, smem.fifoAddress, smem.fifoBytes},
                                  {kRpmDoorbellPhysical, kRpmDoorbellPhysical, 4}};
+    preflightStage = "DEVICE_TRANSLATIONS";
     const MemoryRegion regions[] = {layout.control, layout.fifo, layout.doorbell};
     const char *readLabels[] = {"CONTROL_PAR_R", "FIFO_PAR_R", "IPC_PAR_R"};
     const char *writeLabels[] = {"CONTROL_PAR_W", "FIFO_PAR_W", "IPC_PAR_W"};
@@ -377,10 +386,11 @@ extern "C" EFI_STATUS EFIAPI UefiMain(EFI_HANDLE image, EFI_SYSTEM_TABLE *system
         Translate(nullptr, regions[index].address, true, &par); PrintHex(writeLabels[index], par);
     }
     MemoryBinding binding = {};
-    const MemoryAccess access = {nullptr, Translate, NativeRead, NativeWrite, Barrier, Delay};
+    const MemoryAccess access = {nullptr, Translate, NativeRead, NativeWrite, Barrier, Delay, true};
     const Result observed = observeMemory(binding, layout, access);
     Print("DEVICE_TRANSLATIONS="); Print(ResultName(observed)); Print("\r\n");
     if (observed != Result::Ok) { SavePreflight(image); return EFI_UNSUPPORTED; }
+    preflightStage = "FRAMEBUFFER";
     EFI_GUID graphicsGuid = EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID;
     EFI_GRAPHICS_OUTPUT_PROTOCOL *graphics = nullptr;
     const EFI_STATUS found = firmware->BootServices->LocateProtocol(&graphicsGuid, nullptr, reinterpret_cast<VOID **>(&graphics));
@@ -390,6 +400,7 @@ extern "C" EFI_STATUS EFIAPI UefiMain(EFI_HANDLE image, EFI_SYSTEM_TABLE *system
         mode->Info->HorizontalResolution, mode->Info->VerticalResolution,
         mode->Info->PixelsPerScanLine, static_cast<UINT32>(mode->Info->PixelFormat)};
     if (!ProbeFramebufferValid(&framebuffer) || framebuffer.width < 640 || framebuffer.height < 1000) { return EFI_UNSUPPORTED; }
+    preflightStage = "IMAGE_OVERLAP";
     EFI_GUID loadedGuid = EFI_LOADED_IMAGE_PROTOCOL_GUID;
     EFI_LOADED_IMAGE_PROTOCOL *loaded = nullptr;
     EFI_STATUS status = firmware->BootServices->HandleProtocol(image, &loadedGuid, reinterpret_cast<VOID **>(&loaded));
@@ -400,6 +411,22 @@ extern "C" EFI_STATUS EFIAPI UefiMain(EFI_HANDLE image, EFI_SYSTEM_TABLE *system
             return EFI_COMPROMISED_DATA;
         }
     }
+    preflightStage = "GCD_RESERVATIONS";
+    const ProbeRpmGcd gcd = ProbeFindRpmGcd(firmware, layout);
+    PrintHex("GCD_STATUS", gcd.status);
+    Print("GCD_TABLE="); Print(gcd.tablePresent ? "PRESENT\r\n" : "ABSENT\r\n");
+    PrintHex("GCD_REGIONS", gcd.checkedRegions);
+    const char *gcdNames[] = {"CONTROL", "FIFO", "IPC"};
+    for (UINT32 index = 0; index < gcd.checkedRegions; ++index) {
+        Print("GCD_REGION="); Print(gcdNames[index]); Print("\r\n");
+        PrintHex("GCD_BASE", gcd.descriptors[index].BaseAddress);
+        PrintHex("GCD_BYTES", gcd.descriptors[index].Length);
+        PrintHex("GCD_TYPE", gcd.descriptors[index].GcdMemoryType);
+        PrintHex("GCD_CAPABILITIES", gcd.descriptors[index].Capabilities);
+        PrintHex("GCD_ATTRIBUTES", gcd.descriptors[index].Attributes);
+    }
+    if (!gcd.qualified) { SavePreflight(image); return EFI_UNSUPPORTED; }
+    preflightStage = "EFI_RESERVATIONS";
     UINTN mapBytes = 0, mapKey = 0, stride = 0;
     UINT32 version = 0;
     EFI_BOOT_SERVICES *services = firmware->BootServices;
@@ -412,8 +439,11 @@ extern "C" EFI_STATUS EFIAPI UefiMain(EFI_HANDLE image, EFI_SYSTEM_TABLE *system
     if (EFI_ERROR(status)) { return status; }
     mapBytes = capacity;
     status = services->GetMemoryMap(&mapBytes, reinterpret_cast<EFI_MEMORY_DESCRIPTOR *>(map), &mapKey, &stride, &version);
-    const bool qualified = !EFI_ERROR(status) && mapBytes <= capacity && ProbeRpmMmioReserved(map, mapBytes, stride, layout);
-    Print("EFI_MMIO_RESERVATIONS="); Print(qualified ? "QUALIFIED\r\n" : "REFUSED\r\n");
+    const bool mapValid = !EFI_ERROR(status) && mapBytes <= capacity;
+    const bool qualified = mapValid && ProbeRpmMmioReserved(map, mapBytes, stride, layout, gcd.qualified);
+    const bool listed = mapValid && ProbeRpmMmioReserved(map, mapBytes, stride, layout);
+    Print("EFI_MMIO_LISTING="); Print(listed ? "COMPLETE\r\n" : "NOT_COMPLETE\r\n");
+    Print("GCD_AND_EFI_RESERVATIONS="); Print(qualified ? "QUALIFIED\r\n" : "REFUSED\r\n");
     if (qualified) {
         ChannelSnapshot snapshot = {};
         if (snapshotChannel(binding, snapshot) != Result::Ok) {
@@ -430,6 +460,7 @@ extern "C" EFI_STATUS EFIAPI UefiMain(EFI_HANDLE image, EFI_SYSTEM_TABLE *system
     Print("No channel, FIFO or IPC writes before ExitBootServices.\r\n");
     SavePreflight(image);
     if (!qualified) { services->FreePool(map); return EFI_UNSUPPORTED; }
+    preflightStage = "START_KEY";
     Print("RPM HANDOFF READY - Volume Up starts the native test.\r\n");
     Print("Any other key returns. Post-EBS results are screen-only.\r\n");
     EFI_INPUT_KEY key = {};
@@ -439,8 +470,11 @@ extern "C" EFI_STATUS EFIAPI UefiMain(EFI_HANDLE image, EFI_SYSTEM_TABLE *system
         services->FreePool(map);
         return EFI_ERROR(status) ? status : EFI_SUCCESS;
     }
+    preflightStage = "WATCHDOG";
     status = services->SetWatchdogTimer(0, 0, 0, nullptr);
     if (EFI_ERROR(status)) { services->FreePool(map); return status; }
+    preflightStage = "FINAL_GCD_CHECK";
+    if (!ProbeFindRpmGcd(firmware, layout).qualified) { services->FreePool(map); return EFI_UNSUPPORTED; }
     const auto getMap = services->GetMemoryMap;
     const auto exitServices = services->ExitBootServices;
     Print("Attempting native RPM handoff; force reboot after result.\r\n");
@@ -451,7 +485,7 @@ extern "C" EFI_STATUS EFIAPI UefiMain(EFI_HANDLE image, EFI_SYSTEM_TABLE *system
     for (UINT32 attempt = 0; attempt < 3; ++attempt) {
         mapBytes = capacity;
         status = getMap(&mapBytes, reinterpret_cast<EFI_MEMORY_DESCRIPTOR *>(map), &mapKey, &stride, &version);
-        if (EFI_ERROR(status) || mapBytes > capacity || !ProbeRpmMmioReserved(map, mapBytes, stride, layout)) { break; }
+        if (EFI_ERROR(status) || mapBytes > capacity || !ProbeRpmMmioReserved(map, mapBytes, stride, layout, true)) { break; }
         status = exitServices(image, mapKey);
         if (!EFI_ERROR(status)) { AfterExit(framebuffer, binding); }
         if (status != EFI_INVALID_PARAMETER) { break; }
@@ -459,4 +493,21 @@ extern "C" EFI_STATUS EFIAPI UefiMain(EFI_HANDLE image, EFI_SYSTEM_TABLE *system
     const ChannelSnapshot empty = {};
     DisplayResult(framebuffer, "EXIT BOOT SERVICES FAILED", false, Result::NotReady,
                   Result::NotReady, Result::NotReady, Result::NotReady, empty, empty, false);
+}
+
+extern "C" EFI_STATUS EFIAPI UefiMain(EFI_HANDLE image, EFI_SYSTEM_TABLE *systemTable)
+{
+    firmware = nullptr;
+    const EFI_STATUS status = Run(image, systemTable);
+    if (EFI_ERROR(status) && firmware && firmware->ConOut && firmware->ConIn && firmware->BootServices) {
+        Print("RPM PREFLIGHT STOPPED\r\n");
+        Print("PREFLIGHT_FAILED_STAGE="); Print(preflightStage ? preflightStage : "ARGUMENTS"); Print("\r\n");
+        PrintHex("PREFLIGHT_FAILED_STATUS", status);
+        if (!saveAttempted) { SavePreflight(image); }
+        Print("Press a key to return to firmware.\r\n");
+        EFI_INPUT_KEY key = {};
+        WaitForKey(&key);
+        Print("Returning to firmware.\r\n");
+    }
+    return status;
 }

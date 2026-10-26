@@ -5,6 +5,6 @@
 #include "SmdMemory.h"
 
 bool ProbeRpmMmioReserved(const VOID *map, UINTN mapBytes, UINTN stride,
-                          const adreno::rpm::MemoryLayout &layout);
+                          const adreno::rpm::MemoryLayout &layout, bool gcdQualified = false);
 
 #endif

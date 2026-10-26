@@ -39,7 +39,7 @@ for component in AdrenoCore IommuCore CommandStream GpuIo LpaeCore SmmuContext S
     -I "$ROOT/drivers/NativeAdreno418" \
     -c "$ROOT/drivers/NativeAdreno418/$component.cpp" -o "$OUT/objects/$component.obj"
 done
-for component in LumiaGpuProbe LumiaRpmHandoff ReportStore FirmwareClock FirmwareSmem FirmwareMemory; do
+for component in LumiaGpuProbe LumiaRpmHandoff ReportStore FirmwareClock FirmwareSmem FirmwareMemory FirmwareGcd; do
   "$CLANG" --target=aarch64-pc-windows-msvc -std=c++17 -Os \
     -ffreestanding -fno-builtin -fno-stack-protector -fshort-wchar \
     -fno-exceptions -fno-rtti -mno-stack-arg-probe -mgeneral-regs-only -mstrict-align \
@@ -63,6 +63,7 @@ for application in LumiaProbe LumiaHandoff LumiaGpuProbe LumiaRpmHandoff; do
     application_objects+=("$OUT/objects/FramebufferCore.obj" "$OUT/objects/PlatformCheck.obj")
     application_objects+=("$OUT/objects/ReportStore.obj" "$OUT/objects/FirmwareSmem.obj")
     application_objects+=("$OUT/objects/FirmwareMemory.obj")
+    application_objects+=("$OUT/objects/FirmwareGcd.obj")
     application_objects+=("$OUT/objects/SmdMemory.obj" "$OUT/objects/SmdPipe.obj")
   fi
   "$LINKER" /machine:arm64 /subsystem:efi_application /entry:UefiMain \

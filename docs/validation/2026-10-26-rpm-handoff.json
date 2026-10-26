@@ -1,6 +1,8 @@
 {
   "date": "2026-10-26",
   "scope": "Native RPM shared-memory binding and opt-in post-firmware channel open/close",
+  "superseded_by": "2026-10-26-rpm-handoff-v2.json",
+  "handset_preflight_evidence": "../hardware/2026-10-26-rpm-handoff-v1.json",
   "source_sha256": {
     "drivers/NativeAdreno418/SmdMemory.cpp": "79428b2c322dc9b2afb715d78a69b745ccd491041b0ad17e7184c188ba4c8268",
     "drivers/NativeAdreno418/SmdMemory.h": "175f4027ac7d774bacb79269d1f226d20729fdaf087fda51b909f2ae3d3daadf",

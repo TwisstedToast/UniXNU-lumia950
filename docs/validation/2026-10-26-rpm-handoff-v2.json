@@ -1,0 +1,43 @@
+{
+  "date": "2026-10-26",
+  "scope": "Correct the handset preflight stop without bypassing physical mappings or RAM conflict checks",
+  "prior_handset_evidence": "../hardware/2026-10-26-rpm-handoff-v1.json",
+  "changes": [
+    "Classify complete allocations through the read-only DXE GCD descriptor service",
+    "Reject UEFI RAM/allocation conflicts independently; do not require redundant MMIO listings",
+    "Do not infer execution world from architecturally UNKNOWN PAR.NS; require an explicit Non-secure EL1 platform contract",
+    "Keep preflight failures on screen with stage/status, saving previously unsaved diagnostics"
+  ],
+  "source_sha256": {
+    "drivers/NativeAdreno418/SmdMemory.cpp": "aadbeefa29951565a0b2fd8b2dbc9884e52b21ec29e044bb827519c33f68bb4d",
+    "drivers/NativeAdreno418/SmdMemory.h": "755f86b06f4b7fe44991ea78d572cfad6ad204339312c4abfe35f5f4e1e47595",
+    "tools/uefi-probe/LumiaRpmHandoff.cpp": "2e608266c36e8094407ef6ad1f0234e79a2491e93c9308f0ffaf86deee0084b1",
+    "tools/uefi-probe/FirmwareGcd.cpp": "dfe51cd15a464ef3687398e11d12e6eba97c28d7a7792ebf98cef38330f6bcfd",
+    "tools/uefi-probe/FirmwareMemory.cpp": "88315875c150e3a8a881308be94402b45b9bd74f5c7619390b6b38d4486b952f"
+  },
+  "validation": {
+    "native_smd_memory_and_teardown": "171 ASan/UBSan checks, zero failures; simulated peer and MMIO",
+    "rpm_and_smd_regression": "190 ASan/UBSan checks, zero failures",
+    "efi_reservations": "38 ASan/UBSan checks, zero failures; synthetic descriptors",
+    "gcd_discovery": "30 ASan/UBSan checks, zero failures; mock DXE with the official service-table ABI",
+    "report_and_clock_regression": "409 checks, zero failures",
+    "smem_discovery_regression": "66 checks, zero failures",
+    "aarch64_efi_crosscompile": true,
+    "qemu_platform_refusal_and_return": [2, 3],
+    "qemu_emulates_lumia_rpm": false,
+    "native_xnu_abi_compile_of_v2": "Not yet qualified; requires a new source-revision build"
+  },
+  "efi_artifact": {
+    "name": "LumiaRpmHandoff.efi",
+    "bytes": 23552,
+    "sha256": "3ceca49bf9b119eec6ed79ceec753ecc636634fdf296d79cf45d1a38bb94874f"
+  },
+  "runtime_status": {
+    "handset_gcd_qualified": false,
+    "handset_native_channel_open_close_qualified": false,
+    "rpm_resource_requests_sent_by_application": false,
+    "gpu_frame_observed": false,
+    "60fps_observed": false,
+    "ios_boot_observed": false
+  }
+}

@@ -84,6 +84,33 @@ int main()
     wrapped.fifo.physical = ~static_cast<adreno::u64>(0) - 3;
     expect(!ProbeRpmMmioReserved(map.entries.data(), sizeof(map.entries), sizeof(map.entries[0]), wrapped),
            "allocation range overflow cannot appear covered");
+    expect(ProbeRpmMmioReserved(&map.entries[2], sizeof(map.entries[2]), sizeof(map.entries[2]), layout, true),
+           "separately qualified GCD MMIO need not be listed in the UEFI RAM map");
+    expect(!ProbeRpmMmioReserved(&map.entries[2], sizeof(map.entries[2]), sizeof(map.entries[2]), layout),
+           "a missing UEFI MMIO descriptor still refuses without independently qualified GCD coverage");
+    for (UINT32 type : std::array<UINT32, 7>{EfiConventionalMemory, EfiLoaderCode, EfiLoaderData,
+            EfiBootServicesCode, EfiBootServicesData, EfiRuntimeServicesCode, EfiRuntimeServicesData}) {
+        Map conflict;
+        conflict.entries[0].Type = type;
+        expect(!ProbeRpmMmioReserved(conflict.entries.data(), sizeof(conflict.entries), sizeof(conflict.entries[0]), layout, true),
+               "GCD coverage cannot override UEFI RAM, loader, boot-services or runtime allocation conflicts");
+    }
+    Map noAttributes;
+    noAttributes.entries[0].Attribute = 0;
+    expect(ProbeRpmMmioReserved(noAttributes.entries.data(), sizeof(noAttributes.entries), sizeof(noAttributes.entries[0]), layout, true),
+           "GCD UC capabilities plus actual Device translations qualify MMIO with omitted UEFI attributes");
+    Map reserved;
+    reserved.entries[0].Type = EfiReservedMemoryType;
+    expect(ProbeRpmMmioReserved(reserved.entries.data(), sizeof(reserved.entries), sizeof(reserved.entries[0]), layout, true),
+           "GCD-classified MMIO may also be marked reserved by the UEFI map");
+    Map duplicate;
+    duplicate.entries[2] = duplicate.entries[0];
+    expect(!ProbeRpmMmioReserved(duplicate.entries.data(), sizeof(duplicate.entries), sizeof(duplicate.entries[0]), layout, true),
+           "GCD does not excuse duplicate overlapping UEFI descriptors");
+    Map empty;
+    empty.entries[0].NumberOfPages = 0;
+    expect(!ProbeRpmMmioReserved(empty.entries.data(), sizeof(empty.entries), sizeof(empty.entries[0]), layout, true),
+           "GCD does not excuse a malformed zero-page UEFI descriptor");
     std::printf("EFI RPM reservations: %u checks, %u failures (synthetic memory maps)\n", checks, failures);
     return failures ? 1 : 0;
 }

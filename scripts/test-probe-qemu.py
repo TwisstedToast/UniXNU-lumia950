@@ -142,7 +142,7 @@ def main() -> None:
         "probe": ["LUMIA 950 | UEFI BRING-UP PROBE v1", "Disk writes: NONE",
                   "CurrentEL: EL1", "DarwinBoot EL1: OK", "GOP:",
                   "PROBE COMPLETE", "Returning to firmware."],
-        "rpm": ["LUMIA 950 | NATIVE RPM HANDOFF v1",
+        "rpm": ["LUMIA 950 | NATIVE RPM HANDOFF v2",
                 "PLATFORM_UNSUPPORTED: no SMEM, translation or MMIO access.",
                 "RPM HANDOFF REFUSED - firmware retained.", "Returning to firmware."],
     }

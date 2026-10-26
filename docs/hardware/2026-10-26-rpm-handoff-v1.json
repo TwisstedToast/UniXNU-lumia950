@@ -1,0 +1,39 @@
+{
+  "date": "2026-10-26",
+  "device": "Microsoft Lumia 950, MSM8992",
+  "application": "Native RPM handoff v1",
+  "efi_sha256": "90ec4e2516022a8ecbaab48124fbeffd8e6a44e6ce5180d2abc612663b71af95",
+  "source_commit": "3272411e34a86ed2e3f2b13785de706e3c9ccf68",
+  "user_observation": "Application immediately returned to the Lumia UEFI menu",
+  "saved_report": {
+    "path": "EFI/LumiaProbe/gpu-report-02.txt",
+    "bytes": 722,
+    "sha256": "0025dbed28d752a8fea7c1c0b58559e9ac5d4d4c07401a0db214ba57f1dd29a6",
+    "retrieval": "Independently read over USB mass storage from a fresh read-only mount"
+  },
+  "observations": {
+    "boot_mpidr": "0x80000000",
+    "boot_midr": "0x410fd033",
+    "channel": 4,
+    "channel_type": "0x020f",
+    "control_address": "0xfc428000",
+    "control_bytes": 88,
+    "fifo_address": "0xfc428200",
+    "fifo_bytes": 2048,
+    "control_par_read_and_write": "0x00000000fc428b00",
+    "fifo_par_read_and_write": "0x00000000fc428b00",
+    "ipc_par_read_and_write": "0x00000000f900db00",
+    "device_translations": "OK",
+    "efi_mmio_reservations": "REFUSED"
+  },
+  "interpretation": {
+    "stage1_device_attributes": "Device-nGnRnE, expected output pages, no translation/permission fault",
+    "preflight_return_reason": "The strict UEFI MMIO-descriptor check failed; the DXE GCD resource map was not queried by v1",
+    "ns_bit_caveat": "PAR.NS happens to be one here, but is architecturally UNKNOWN for Non-secure translations; it is not evidence of the execution world",
+    "exact_descriptor_mismatch_known": false
+  },
+  "exit_boot_services_attempted": false,
+  "channel_or_ipc_writes": false,
+  "gpu_frame_observed": false,
+  "ios_boot_observed": false
+}

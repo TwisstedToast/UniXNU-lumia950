@@ -25,7 +25,7 @@ struct Device {
     struct Operation { char kind; u64 address; u32 value; };
     std::vector<Operation> operations;
     u32 attributes = 0;
-    bool secure = false, writeFault = false, fault = false, wrongPhysical = false;
+    bool clearNsBit = false, unknownWorld = false, writeFault = false, fault = false, wrongPhysical = false;
     bool failTranslate = false, failRead = false, failWrite = false, failBarrier = false;
     bool peer = true, dirtyClose = false, remoteReset = false, delayedClose = false;
     u64 faultAddress = 0;
@@ -43,7 +43,7 @@ struct Device {
             if (address < region.address || address >= region.address + region.bytes) { continue; }
             const u64 physical = region.physical + address - region.address;
             *par = (physical & ~0xfffull) | (static_cast<u64>(device.attributes) << 56) |
-                (device.secure ? 0 : 0x200u) | (device.wrongPhysical ? 0x100000000ull : 0);
+                (device.clearNsBit ? 0 : 0x200u) | (device.wrongPhysical ? 0x100000000ull : 0);
             if (device.fault || (writing && device.writeFault) || address == device.faultAddress) { *par |= 1; }
             return true;
         }
@@ -112,7 +112,7 @@ struct Device {
         if (device.mutateAfterDelay && device.delays == device.mutateAfterDelay) { ++device.control[5]; }
         expect(microseconds <= 1000, "native delays respect the qualified transport bound");
     }
-    MemoryAccess access() { return {this, translate, read, write, barrier, delay}; }
+    MemoryAccess access() { return {this, translate, read, write, barrier, delay, !unknownWorld}; }
 };
 
 void testMappings()
@@ -148,17 +148,23 @@ void testMappings()
     }
     for (unsigned failure = 0; failure < 6; ++failure) {
         Device invalid;
-        invalid.secure = failure == 0;
+        invalid.unknownWorld = failure == 0;
         invalid.writeFault = failure == 1;
         invalid.fault = failure == 2;
         invalid.wrongPhysical = failure == 3;
         invalid.failTranslate = failure == 4;
         invalid.failBarrier = failure == 5;
         MemoryBinding rejected = {};
-        expect(observeMemory(rejected, invalid.layout, invalid.access()) == Result::NotReady &&
+        expect(observeMemory(rejected, invalid.layout, invalid.access()) ==
+               (failure == 0 ? Result::Unowned : Result::NotReady) &&
                rejected.state == MemoryState::Empty && invalid.reads == 0 && invalid.writes == 0,
-               "secure, inaccessible, aliased or unqualified mapping refuses before dereference");
+               "unknown execution world, inaccessible, aliased or unqualified mapping refuses before dereference");
     }
+    Device undefinedNs;
+    undefinedNs.clearNsBit = true;
+    MemoryBinding nonSecure = {};
+    expect(observeMemory(nonSecure, undefinedNs.layout, undefinedNs.access()) == Result::Ok,
+           "PAR.NS is architecturally UNKNOWN in Non-secure state and cannot be used as a security gate");
     for (unsigned mutation = 0; mutation < 12; ++mutation) {
         Device invalid;
         MemoryLayout layout = invalid.layout;
