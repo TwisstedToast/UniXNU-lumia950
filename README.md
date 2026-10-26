@@ -182,11 +182,11 @@ in that volume, so the volume buttons are only a menu input, not a way into a sh
 | UniXNU menu | drawn on the 1440x2560 panel in the portrait card layout, three action entries, volume keys move the selection; touch is not consumed |
 | DarwinBoot | `DarwinBoot.efi` builds standalone from its DSC and `scripts/stage-kernel.py` names it in the staged config; not yet loaded |
 | ADT | generated and checked on the host (11976 B, six CPUs, NVRAM proxy); not yet handed to a kernel |
-| XNU kernel | compiles and links on 16.x (14,840,992 B, ARM64 `MH_EXECUTE`, sha256 `8b8c633d…`), merged with the 16.7.16 kexts; not loaded |
+| XNU kernel | the updated native drivers compile and link on 16.x in [run 40379567698](https://github.com/TwisstedToast/UniXNU-lumia950/actions/runs/40379567698), source `c76c869`; merged with the 16.7.16 kexts, not loaded |
 | Prelinked kernel | merged by the kernel job: 9 components, 12,882 rebindings, a sparse prelink index; the tool marks it unqualified and it has not run. The kernel stage takes that image without changing it |
 | XNU entry | the on-device EFI probe confirms EL1; the handoff photograph confirms CPU framebuffer writes after ExitBootServices with firmware mappings retained, not XNU entry or GPU acceleration |
-| Storage driver | shared command/PIO engine, 368 simulated transport checks, XNU wrapper wired; updated wrapper has not been ABI-compiled or run on hardware |
-| Native GICv2 | hash-qualified ArmCpu integration and shared core written; asynchronous timer/SGI/SPI tests pass in standalone QEMU with security extensions off/on; no XNU or handset IRQ result |
+| Storage driver | shared command/PIO engine, 368 simulated transport checks, updated XNU wrapper ABI-compiled and linked in run 40379567698; not run on hardware |
+| Native GICv2 | hash-qualified ArmCpu integration ABI-compiled and linked; asynchronous timer/SGI/SPI tests pass in standalone QEMU with security extensions off/on; no XNU boot or handset IRQ result |
 | Display (`NativeMdss`) | rung 1 of 6: maps the MDP, MMSS, DSI0 and PHY windows, proves `gdsc_mdss` is on, then reads the MDSS/MDP revisions, the DSI controller's version and enable bits and the firmware's raw video-timing words. Publishes no framebuffer, never run on hardware |
 | GPU (`NativeAdreno418`) | rung 1 of 6 runs: maps the KGSL and MMSS windows, refuses to read a collapsed domain, reads the revision. Rungs 2–4 and the fence half of 5 exist as host-tested cores (`gdscrEnableValue`/`gdscrPollUntilOn`, `IommuCore`, `CommandStream`) and are not wired; rung 6 has a host checker for the addon blob but no plugin built for iOS 16. Built by the archive step, publishes no GPU service, never run on hardware |
 | iOS visual effects | none, and blocked twice over: no display driver (blocker 3) and no Metal device (blocker 7). See "iOS visual effects" |
@@ -221,9 +221,11 @@ and the archive holds `NativeSdhci.o` and `SdhciCore.o`, both ARM64 `MH_OBJECT`;
 archive is not byte-reproducible, because `ar` records member timestamps, so it is not
 quoted as an identity.
 
-Those historical CI results do not qualify the new storage wrapper or ArmCpu GICv2
-integration. Both need a new XNU/iPhoneOS SDK compile and kernel link; local core tests
-and the standalone AArch64 IRQ test do not compile IOKit.
+The updated storage wrapper, ArmCpu GICv2 integration and GPU/RPM cores now compile with
+the recorded XNU/iPhoneOS SDK recipe and link in
+[run 40379567698](https://github.com/TwisstedToast/UniXNU-lumia950/actions/runs/40379567698),
+source `c76c869`. This is separate from the host and standalone IRQ tests. The resulting
+prelinked candidate remains marked unqualified; no XNU boot or handset IRQ result is claimed.
 
 The kernel links too. Upstream calls `native_legacy_display_probe()` from `bsd_init.c`
 without the `XNU_NATIVE_LEGACY_DISPLAY` guard every other call site carries, so the symbol
@@ -469,8 +471,8 @@ checker recomputes that checksum rather than trusting the generator. `unique-chi
 `chip-id` are required because anything calling `gethostuuid()` blocks forever without them;
 the checker refuses a tree that omits them unless explicitly told to allow it.
 
-What the tree does not solve: the new ArmCpu GICv2 integration still needs native-kernel
-and handset validation (blocker 2), PSCI is the MSM8992 subset without SYSTEM_OFF/SYSTEM_RESET
+What the tree does not solve: the compiled ArmCpu GICv2 integration still needs native-kernel
+runtime and handset validation (blocker 2), PSCI is the MSM8992 subset without SYSTEM_OFF/SYSTEM_RESET
 (blocker 4), and the MDSS node currently matches only a register-identity driver.
 
 ## The GPU (Adreno 418)
@@ -718,8 +720,9 @@ The existing GICv3 implementation is retained as the other branch.
 
 Standalone QEMU tests take real asynchronous AArch64 exceptions for timer, SGI and
 SPI twice, with security extensions disabled and enabled. This is not an XNU boot.
-The new IOKit integration has not been compiled against the iPhoneOS SDK or tested on
-the Lumia. GICv2 secondary CPU startup is deliberately unqualified and refused.
+The new IOKit integration compiles against the recorded iPhoneOS/XNU ABI and links in
+run 40379567698, but has not run on the Lumia. GICv2 secondary CPU startup remains
+deliberately unqualified and refused.
 See [native GICv2 bring-up](docs/native-gicv2.md).
 
 ### Earlier HackiOS route

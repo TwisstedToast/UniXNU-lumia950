@@ -34,10 +34,11 @@ RCA, stuck reset, controller and card errors, partial FIFO failure, missing
 completion, destination guards, capacity limits, and unsupported EXT_CSD modes.
 The model never performs MMIO or reads the phone.
 
-The portable sources also compile freestanding for AArch64. This is not an
-IOKit compile. `NativeSdhci.cpp` still needs the recorded XNU/iPhoneOS SDK
-recipe, kernel link, and phone testing. Its archive recipe now includes
-`PollingHost.cpp`, and CI runs the host tests.
+The portable sources also compile freestanding for AArch64. Separately,
+`NativeSdhci.cpp`, `SdhciCore.cpp` and `PollingHost.cpp` compiled with the recorded
+XNU/iPhoneOS SDK recipe and linked in
+[run 40379567698](https://github.com/TwisstedToast/UniXNU-lumia950/actions/runs/40379567698),
+source `c76c869`. This qualifies the build, not an on-phone read or an iOS boot.
 
 ## Still required
 
@@ -47,7 +48,7 @@ this work. ADMA, SDHCI IRQ delivery, persistent writes, APFS/Data-volume policy,
 root-volume image assembly, and successful launch of iOS userland remain separate
 work. A read-only storage device alone does not provide iOS's writable Data volume.
 
-The staged GPU preflight on the phone is unchanged.
+The separate GPU metadata preflight is not evidence of native storage operation.
 
 ## Protocol references
 

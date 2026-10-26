@@ -39,8 +39,14 @@ defines an APPS-RPM channel table and a shared-memory lookup protocol. GPU prefl
 can query that protocol, copy the bounded channel table, and report the matching channel's
 control/FIFO addresses and sizes without opening the channel, issuing resource votes,
 or writing the IPC register. This is firmware-provided metadata, not proof that the
-memory remains reserved, coherently mapped, or exclusively owned after handoff. No v3
-on-phone result has been recorded yet.
+memory remains reserved, coherently mapped, or exclusively owned after handoff.
+
+The handset's saved v3 report now confirms channel **4**, type **`0x020f`**, reference
+count **2**, an **88-byte** control block at **`0xfc428000`**, and **2048 bytes** of FIFO
+storage at **`0xfc428200`** (1024 bytes per direction). This matches the implemented
+word-access layout and supported FIFO geometry. It does not establish empty indices,
+exclusive ownership, post-handoff access or a working IPC notification. The GPU is
+still powered off. See `docs/hardware/2026-10-26-smem-preflight-v3.json`.
 
 That firmware source configures a 2 MiB shared-memory fallback at `0x06a00000` and an
 RPM IPC doorbell at `0xf900d008`. They are reference values, not handset measurements;
@@ -99,10 +105,13 @@ FIFO wrap directions, partial frames, producer/notification ordering, invalid in
 failed publication, native reopen and multiple correlated transactions across a simulated
 peer. Tests do not send real votes or power the handset GPU.
 
-The EFI script cross-compiles these source files, but deliberately does **not** link them
-into the diagnostic or enable new handset operations. The three EFI application hashes
-remain unchanged. The XNU archive builder now includes them, but a new recorded-ABI
-IOKit build has not run. No new phone application or firmware image is installed.
+The EFI script cross-compiles the RPM/SMD cores but deliberately does **not** link them
+into the diagnostic. The separate v3 metadata helper is linked and has run on the phone;
+the normal probe and post-EBS display-test images remain unchanged. The updated XNU
+archive, including `RpmCore.o` and `SmdPipe.o`, compiled with the recorded ABI and linked
+in [run 40379567698](https://github.com/TwisstedToast/UniXNU-lumia950/actions/runs/40379567698),
+source `c76c869`. The native driver still does not activate these backends or publish a
+GPU service. The kernel candidate is unqualified and has not been installed or booted.
 
 ## Remaining work before an actual accelerated image
 

@@ -1,0 +1,42 @@
+{
+  "date": "2026-10-26",
+  "device": "Lumia 950, MSM8992",
+  "source": "Firmware-generated gpu-report-01.txt retrieved from the handset EFI filesystem",
+  "report_bytes": 1053,
+  "report_sha256": "1b1748897c673fd598ea80fcbe10bf5b574606129d6be5d5150045da61424eb1",
+  "application_sha256": "6d53dde9ddfd449518c80390ba3a0b920bd60bf4e4285b2510e7e46bc79eed65",
+  "smem": {
+    "efi_status": "0x0000000000000000",
+    "protocol": "PRESENT",
+    "stage": "COMPLETE",
+    "channel_count": 1,
+    "channel_id": 4,
+    "channel_type": "0x0000020f",
+    "reference_count": 2,
+    "control_address": "0x00000000fc428000",
+    "control_bytes": 88,
+    "fifo_address": "0x00000000fc428200",
+    "fifo_total_bytes": 2048,
+    "fifo_per_direction_bytes": 1024
+  },
+  "gpu": {
+    "state": "POWER_DOMAIN_OFF",
+    "gdscr_gx": "0x00282001",
+    "gdscr_cx": "0x00282001",
+    "core_cbcr": "0x80000ff0",
+    "ahb_cbcr": "0x80008000",
+    "timer_cbcr": "0x80000000",
+    "gpu_or_smmu_registers_accessed": false
+  },
+  "limits": [
+    "The reported reference count does not establish exclusive ownership.",
+    "Control state and FIFO indices were not sampled; an empty channel was not demonstrated.",
+    "Addresses were returned by firmware before ExitBootServices; native mappings and post-handoff access remain unqualified.",
+    "No channel opening, IPC notification, power vote, GPU rendering or 60 FPS result occurred."
+  ],
+  "filesystem_followup": {
+    "verification": "fsck_msdos -n via diskutil verifyVolume returned 0; no repair was performed",
+    "original_uefi_bootshim_bcd_hashes_unchanged": true,
+    "phone_volumes_unmounted_after_retrieval": true
+  }
+}

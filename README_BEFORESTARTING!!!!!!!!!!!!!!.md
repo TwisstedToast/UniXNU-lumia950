@@ -87,7 +87,8 @@ Do not ask "should I run CI?" — run it, then read the log.
 10. **Storage completion is asynchronous even with polled PIO.** `PollingHost.cpp`
     waits for the final transfer event and checks controller/R1 errors. Do not put
     the old immediate-completion sample or raw CSD-register ordering back into
-    `NativeSdhci.cpp`. Current wrapper edits still need a new SDK compile.
+    `NativeSdhci.cpp`. The wrapper compiled in run 40379567698; later edits still
+    require their own recorded-ABI build.
 
 ## Resolution and screenshots
 

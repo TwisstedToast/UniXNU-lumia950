@@ -81,15 +81,18 @@ explicit refusal rather than interrupt-enable success.
 
 ## Remaining gates
 
-The generated ArmCpu IOKit source has not been compiled with the selected
-XNU/iPhoneOS SDK recipe. The Mac has no configured iPhoneOS SDK, and no new
-kernel artifact was produced. Core cross-compilation and QEMU do not qualify
-the XNU ABI, timer/scheduler integration, boot memory layout or loader.
+The generated ArmCpu IOKit source and shared core compiled with the recorded
+XNU/iPhoneOS SDK recipe and linked in
+[run 40379567698](https://github.com/TwisstedToast/UniXNU-lumia950/actions/runs/40379567698),
+source `c76c869`. Its prelinked kernel candidate remains marked unqualified and
+has not run on the phone. Core cross-compilation and QEMU alone do not qualify
+the XNU ABI; the CI compile does not qualify runtime timer/scheduler integration,
+boot memory layout or the loader.
 
 On the Lumia, qualify the inherited GIC security ownership, target mask, PMR,
 PPI 27 delivery, `rtclock_intr`, self-IPI and a real device SPI. External-device
-register-map/clock qualification remains mandatory. The phone's staged GPU
-preflight is unchanged; this work does not install a new fallback or kernel.
+register-map/clock qualification remains mandatory. The separate GPU v3 metadata
+preflight is not evidence of native IRQ delivery. No kernel is installed by this work.
 
 ## Primary controller reference
 

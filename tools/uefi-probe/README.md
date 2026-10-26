@@ -60,8 +60,8 @@ through `GPU PROBE COMPLETE`; the later save result is shown on screen, not in t
 ```sh
 UNIXNU_EDK2=/path/to/edk2 bash scripts/test-report.sh
 UNIXNU_EDK2=/path/to/edk2 PROBE_ENTRY=LumiaGpuProbe \
-    bash scripts/build-probe.sh out/gpu-preflight-v2
-python3 scripts/test-probe-qemu.py --application gpu --esp out/gpu-preflight-v2/esp \
+    bash scripts/build-probe.sh out/gpu-preflight-v3
+python3 scripts/test-probe-qemu.py --application gpu --esp out/gpu-preflight-v3/esp \
     --firmware /path/to/edk2-aarch64-code.fd --writable-report-test
 ```
 
@@ -78,7 +78,10 @@ It reads the 64-entry channel-allocation table and reports one unambiguous APPS-
 channel's ID, reference count, control buffer and FIFO. It refuses malformed or
 overlapping layouts and never opens the channel, writes shared memory or rings the IPC
 doorbell. These addresses are observations from boot services, not a qualified native
-post-handoff mapping. The v3 application has not yet been run on the handset.
+post-handoff mapping. The v3 handset report confirmed channel 4, an 88-byte control
+block at `0xfc428000`, and a 2048-byte FIFO allocation at `0xfc428200`. The GPU remained
+off; no channel was opened or resource vote sent. See
+`docs/hardware/2026-10-26-smem-preflight-v3.json` for the evidence and limits.
 
 The clock lookup ABI is pinned to Lumia950XLPkg revision
 `cfc68a4d19fc7e8645bff6d8fce7308ad8494a76`, `Include/Protocol/QcomClock.h` and

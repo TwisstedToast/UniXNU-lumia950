@@ -1,0 +1,77 @@
+{
+  "date": "2026-10-26",
+  "repository": "TwisstedToast/UniXNU-lumia950",
+  "run_id": 40379567698,
+  "run_url": "https://github.com/TwisstedToast/UniXNU-lumia950/actions/runs/40379567698",
+  "source_commit": "c76c8699c54d9a273813ce53e347b6b9eaf6bef3",
+  "unixnu_base_commit": "1a01c2afa197d975d04da892325c56b6b14aaecb",
+  "toolchain": {
+    "host_architecture": "arm64",
+    "macos": "26.6.2",
+    "xcode": "26.6",
+    "xcode_build": "17F113",
+    "driver_compile_recipe": "Recorded XNU IOPlatformExpert.cpo.json arguments, with -Wall -Wextra -Werror"
+  },
+  "jobs": {
+    "validate": "success",
+    "gicv2-emulation": "success",
+    "efi-preflight": "success",
+    "payload": "success",
+    "kernel": "success"
+  },
+  "kernel_artifact": {
+    "artifact_id": 12677919278,
+    "zip_bytes": 49322155,
+    "zip_sha256": "fdba0127db42bf52fe95672fa7e4874b2b7b50e5b2bcbb52d796f5a25de8b532",
+    "download_digest_verified": true,
+    "saved_on_ssd": true
+  },
+  "compiled_archives": {
+    "libArmCpu.a": {
+      "sha256": "a182ebd4afac977ba20a6ed75404e2b196809813a2aefc5e1ab046656a35fb4f",
+      "members": ["ArmCpu.o", "GicV2Core.o"]
+    },
+    "libNativeSdhci.a": {
+      "sha256": "ff1db72723cfa66bc4bcdc1943e822b816529c0773521c523b7bc95ef8080ba3",
+      "members": ["NativeSdhci.o", "SdhciCore.o", "PollingHost.o"]
+    },
+    "libNativeAdreno418.a": {
+      "sha256": "201c46dc771fdc0a81b12d9d27bfaae8190a286290b0a829074a082da150aa1b",
+      "members": [
+        "NativeAdreno418.o", "AdrenoCore.o", "IommuCore.o", "CommandStream.o",
+        "GpuIo.o", "LpaeCore.o", "SmmuContext.o", "Submission.o", "RpmCore.o",
+        "SmdPipe.o", "PlatformCheck.o"
+      ]
+    },
+    "libNativeMdss.a": {
+      "sha256": "ce40fbb76f7ddc49a86af116033f6aecf2ba6fa3f81cdf18d1badde7e04a1743",
+      "members": ["NativeMdss.o", "MdssCore.o"]
+    },
+    "libNativeLegacyDisplay.a": {
+      "sha256": "9aa62475f8ab68e013950be66c5cd9932093cc5577ee94054a1bd73ae25933ee",
+      "members": ["NativeLegacyDisplay.o"]
+    }
+  },
+  "object_validation": "NativeAdreno418, RpmCore, SmdPipe, NativeSdhci, PollingHost, ArmCpu and GicV2Core verified as ARM64 Mach-O MH_OBJECT files",
+  "prelinked_candidate": {
+    "bytes": 56147968,
+    "sha256": "2c573aaa554b5e96b709b3896cfaed08c294560ecc9c1da91c7f0c79934a5394",
+    "format": "ARM64 Mach-O executable",
+    "components": 9,
+    "bindings": 12882,
+    "loadable": false,
+    "installed_on_phone": false,
+    "booted_on_phone": false
+  },
+  "scope": {
+    "recorded_abi_compile_and_kernel_link_verified": true,
+    "native_gpu_backends_activated": false,
+    "native_gpu_frame_observed": false,
+    "60fps_observed": false,
+    "ios_userland_boot_observed": false
+  },
+  "supersedes_compile_blocker_in": [
+    "2026-10-26-offline-platform.json",
+    "2026-10-26-native-rpm.json"
+  ]
+}

@@ -29,12 +29,13 @@
   },
   "runtime_status": {
     "installed_on_phone": true,
-    "executed_on_phone": false,
+    "executed_on_phone": true,
     "native_post_handoff_mapping_qualified": false,
     "channel_opened_or_ipc_written": false,
     "gpu_powered_on": false,
     "gpu_rendered_frame_observed": false,
     "60fps_observed": false,
     "ios_boot_observed": false
-  }
+  },
+  "hardware_evidence": "../hardware/2026-10-26-smem-preflight-v3.json"
 }
