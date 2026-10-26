@@ -118,6 +118,49 @@ the green post-EBS marker and changing heartbeat, rather than expecting UEFI con
 after firmware exit. The normal diagnostic remains the default fallback unless
 `PROBE_ENTRY=LumiaHandoff` is specified.
 
+## Native RPM handoff test
+
+`LumiaRpmHandoff.efi` is separate from the read-only GPU probe. It tests the native SMD
+channel needed to request GPU resources after firmware exit. **It does not power the
+GPU, render a GPU frame, boot XNU or provide iOS.** See [native power work](../../docs/native-gpu-power.md).
+
+Before enabling anything, it requires the measured channel-4 profile, nonsecure Device
+stage-1 read/write translations, UC-capable EFI MMIO reservations, and the expected Lumia
+950 platform. It saves its preflight, including raw PAR values and firmware-side channel
+states/indices, to a new `gpu-report-NN.txt` using the existing append-only report writer.
+There are no channel, FIFO or IPC writes while firmware services are live.
+
+At `RPM HANDOFF READY`, **Volume Up starts**; any other key cancels. The test disables
+the watchdog, captures a fresh memory map and exits boot services. It then masks interrupts,
+rechecks the mappings and closed/empty state, and performs one bounded native open/close
+handshake through shared-memory control words and the RPM IPC doorbell. It never sends a
+resource packet, adopts a still-open channel, or resets unread data. Mappings remain pinned
+on uncertain failure. After confirmed close, access is retired rather than reused.
+
+The orange `BEFORE EBS`, blue `POST EBS - CHECKING RPM`, and final result are distinct
+stages. A green `NATIVE RPM CHANNEL OK` requires claim, open, close and retirement all to
+succeed; other results stop without proceeding to GPU registers. **The final screen is
+CPU-drawn diagnostic output, not GPU acceleration.** Its moving bar is only a liveness marker.
+
+The preflight text file does **not** contain post-exit results: file services are gone at
+that point. Photograph the final screen, then force-reboot with Volume Down + Power.
+No firmware functions are called after successful exit. The firmware's inherited mappings
+are kept; this does not qualify XNU's future mappings, native IRQs or resource-vote policy.
+
+```sh
+UNIXNU_EDK2=/path/to/edk2 PROBE_ENTRY=LumiaRpmHandoff \
+    bash scripts/build-probe.sh out/rpm-handoff-v1
+bash scripts/test-gpu.sh
+UNIXNU_EDK2=/path/to/edk2 bash scripts/test-report.sh
+python3 scripts/test-probe-qemu.py --application rpm --esp out/rpm-handoff-v1/esp \
+    --firmware /path/to/edk2-aarch64-code.fd --gic-version 2
+```
+
+QEMU exercises only the unsupported-platform return; the Lumia RPM is not emulated.
+The 170-check memory/handoff suite uses a simulated peer; no handset handshake success is
+claimed from those tests. The standalone app must be installed deliberately; selecting
+`PROBE_ENTRY` stages only an output directory and does not write a physical disk.
+
 ## On the phone
 
 Use the already-installed Lumia950XLPkg ARM64 UEFI. The Windows Phone Developer Menu is

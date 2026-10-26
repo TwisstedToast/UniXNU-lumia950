@@ -289,11 +289,24 @@ jobs:
               --firmware "$firmware" --gic-version "$gic" --writable-report-test \
               --log "out/gpu-preflight/report-write-gic$gic.log"
           done
+      - name: Refuse native RPM handoff on unsupported hardware
+        run: |
+          mkdir -p out/rpm-handoff/esp/EFI/BOOT out/rpm-handoff/esp/EFI/LumiaProbe
+          cp out/gpu-preflight/esp/EFI/LumiaProbe/LumiaRpmHandoff.efi out/rpm-handoff/esp/EFI/BOOT/BOOTAA64.EFI
+          cp out/gpu-preflight/esp/EFI/LumiaProbe/LumiaRpmHandoff.efi out/rpm-handoff/esp/EFI/LumiaProbe/
+          firmware=/usr/share/AAVMF/AAVMF_CODE.fd
+          if [ ! -f "$firmware" ]; then firmware=/usr/share/qemu-efi-aarch64/QEMU_EFI.fd; fi
+          for gic in 2 3; do
+            python3 scripts/test-probe-qemu.py --application rpm --esp out/rpm-handoff/esp \
+              --firmware "$firmware" --gic-version "$gic" --log "out/rpm-handoff/refusal-gic$gic.log"
+          done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: lumia950-efi-preflight
-          path: out/gpu-preflight/**
+          path: |
+            out/gpu-preflight/**
+            out/rpm-handoff/**
 
   gicv2-emulation:
     runs-on: ubuntu-latest

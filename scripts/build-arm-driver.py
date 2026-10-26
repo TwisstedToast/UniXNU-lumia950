@@ -54,6 +54,7 @@ COMPONENTS = {
                     "drivers/NativeAdreno418/Submission.cpp",
                     "drivers/NativeAdreno418/RpmCore.cpp",
                     "drivers/NativeAdreno418/SmdPipe.cpp",
+                    "drivers/NativeAdreno418/SmdMemory.cpp",
                     "drivers/NativeAdreno418/PlatformCheck.cpp"],
         "out": "native-adreno418",
         "include": ["drivers/NativeAdreno418"],

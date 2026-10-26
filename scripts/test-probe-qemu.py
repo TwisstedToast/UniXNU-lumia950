@@ -52,7 +52,8 @@ def run_probe(arguments: argparse.Namespace) -> str:
                     if not chunk:
                         break
                     transcript.extend(chunk)
-                    if b"PROBE COMPLETE" in transcript and not sent_return:
+                    completed = b"PROBE COMPLETE" in transcript or b"RPM HANDOFF REFUSED" in transcript
+                    if completed and not sent_return:
                         process.stdin.write(b"\r")
                         process.stdin.flush()
                         sent_return = True
@@ -119,7 +120,7 @@ def main() -> None:
     parser.add_argument("--gic-version", choices=("2", "3"), default="2")
     parser.add_argument("--timeout", type=float, default=60)
     parser.add_argument("--log", type=Path)
-    parser.add_argument("--application", choices=("probe", "gpu"), default="probe")
+    parser.add_argument("--application", choices=("probe", "gpu", "rpm"), default="probe")
     parser.add_argument("--writable-report-test", action="store_true",
                         help="GPU only: boot twice on a private temporary copy and verify saved files")
     arguments = parser.parse_args()
@@ -135,14 +136,20 @@ def main() -> None:
         arguments.log.parent.mkdir(parents=True, exist_ok=True)
         arguments.log.write_text(transcript)
     print(transcript)
-    required = (["LUMIA 950 | GPU PREFLIGHT v3", "PLATFORM_UNSUPPORTED: MMIO reads skipped.",
-                 "GPU PROBE COMPLETE", "Returning to firmware."] if arguments.application == "gpu"
-                else ["LUMIA 950 | UEFI BRING-UP PROBE v1", "Disk writes: NONE",
-                      "CurrentEL: EL1", "DarwinBoot EL1: OK", "GOP:",
-                      "PROBE COMPLETE", "Returning to firmware."])
+    evidence = {
+        "gpu": ["LUMIA 950 | GPU PREFLIGHT v3", "PLATFORM_UNSUPPORTED: MMIO reads skipped.",
+                "GPU PROBE COMPLETE", "Returning to firmware."],
+        "probe": ["LUMIA 950 | UEFI BRING-UP PROBE v1", "Disk writes: NONE",
+                  "CurrentEL: EL1", "DarwinBoot EL1: OK", "GOP:",
+                  "PROBE COMPLETE", "Returning to firmware."],
+        "rpm": ["LUMIA 950 | NATIVE RPM HANDOFF v1",
+                "PLATFORM_UNSUPPORTED: no SMEM, translation or MMIO access.",
+                "RPM HANDOFF REFUSED - firmware retained.", "Returning to firmware."],
+    }
+    required = evidence[arguments.application]
     missing = [marker for marker in required if marker not in transcript]
     for label in ("Memory descriptors", "Conventional RAM MiB", "Readable filesystem handles"):
-        if arguments.application == "gpu":
+        if arguments.application != "probe":
             break
         match = re.search(rf"{re.escape(label)}: ([0-9]+)", transcript)
         if match is None or int(match.group(1)) == 0:
@@ -157,6 +164,12 @@ def main() -> None:
             if "REPORT_STAGE=CREATE_FILE" not in transcript or "REPORT_EFI_STATUS=0x8000000000000008" not in transcript:
                 parser.exit(1, "error: read-only report volume was not explicitly refused\n")
             print("Read-only report volume correctly reports EFI_WRITE_PROTECTED at CREATE_FILE.")
+    elif arguments.application == "rpm":
+        forbidden = ("RPM_CHANNEL=", "DEVICE_TRANSLATIONS=", "PREFLIGHT_SAVE_STAGE=",
+                     "Attempting native RPM handoff", "RPM HANDOFF READY")
+        if any(marker in transcript for marker in forbidden):
+            parser.exit(1, "error: unsupported QEMU platform entered the native RPM path\n")
+        print(f"QEMU GICv{arguments.gic_version}: RPM platform refusal and firmware return passed")
     else:
         print(f"QEMU GICv{arguments.gic_version}: EFI entry, GOP, memory map, input and return passed")
     print("This is emulator evidence, not a Lumia hardware or XNU boot result.")

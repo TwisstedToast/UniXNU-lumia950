@@ -24,3 +24,9 @@ done
   "$ROOT/drivers/NativeAdreno418/RpmCore.cpp" "$ROOT/drivers/NativeAdreno418/SmdPipe.cpp" \
   "$ROOT/drivers/NativeAdreno418/Test/check-rpm.cpp" -o "$OUT/check-rpm"
 "$OUT/check-rpm"
+"$CXX" -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined \
+  -I "$ROOT/drivers/NativeAdreno418" \
+  "$ROOT/drivers/NativeAdreno418/RpmCore.cpp" "$ROOT/drivers/NativeAdreno418/SmdPipe.cpp" \
+  "$ROOT/drivers/NativeAdreno418/SmdMemory.cpp" \
+  "$ROOT/drivers/NativeAdreno418/Test/check-smd-memory.cpp" -o "$OUT/check-smd-memory"
+"$OUT/check-smd-memory"

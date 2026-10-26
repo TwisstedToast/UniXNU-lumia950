@@ -1,0 +1,54 @@
+{
+  "date": "2026-10-26",
+  "scope": "Native RPM shared-memory binding and opt-in post-firmware channel open/close",
+  "source_sha256": {
+    "drivers/NativeAdreno418/SmdMemory.cpp": "79428b2c322dc9b2afb715d78a69b745ccd491041b0ad17e7184c188ba4c8268",
+    "drivers/NativeAdreno418/SmdMemory.h": "175f4027ac7d774bacb79269d1f226d20729fdaf087fda51b909f2ae3d3daadf",
+    "drivers/NativeAdreno418/SmdPipe.cpp": "7b919e8187e7fc34ba38ab86e4f382d615e854204e79d2a6ceab80855d749335",
+    "tools/uefi-probe/LumiaRpmHandoff.cpp": "3f93566a89d8af125672860fcf3a6c3d707310d6bcb7c2e1388785f50fdf643f",
+    "tools/uefi-probe/FirmwareMemory.cpp": "f13184718cf4fd7bfe51e433d4f7f89798e72bce1c6244b3c71c5fa674324998"
+  },
+  "firmware_reference": {
+    "repository": "WOA-Project/Lumia950XLPkg",
+    "revision_prefix": "0e7e24a",
+    "path": "Include/Configuration/DeviceMemoryMap.h",
+    "source_sha256": "54428754b99fea3cf351fe8dbe3392d5ef76635884517fc73ce1874a51a33063",
+    "rpm_message_ram_base": "0xfc428000",
+    "rpm_message_ram_bytes": 32768,
+    "classification": "Published nonsecure Device MMIO; live reservations and translations remain handset test inputs",
+    "exact_installed_firmware_binary_qualified": false
+  },
+  "validation": {
+    "native_smd_memory_and_teardown": "170 ASan/UBSan checks, zero failures, simulated MMIO and remote peer",
+    "efi_memory_reservations": "25 ASan/UBSan checks, zero failures, synthetic descriptors",
+    "rpm_and_smd_regression": "190 ASan/UBSan checks, zero failures",
+    "gpu_backend_regression": "304 ASan/UBSan checks, zero failures",
+    "mock_report_and_clock": "409 ASan/UBSan checks, zero failures",
+    "mock_smem_discovery": "66 ASan/UBSan checks, zero failures",
+    "storage_regression": "368 simulated PIO checks plus decoding suite passed",
+    "gicv2_regression": "168 simulated MMIO checks passed",
+    "aarch64_efi_crosscompile": true,
+    "strict_integer_warnings": "-Wconversion -Wsign-conversion -Werror passed for SmdMemory.cpp and SmdPipe.cpp",
+    "qemu_gic_versions": [2, 3],
+    "qemu_rpm_platform_refusal_and_return": true,
+    "qemu_rpm_hardware_emulated": false,
+    "qemu_gpu_v3_regression": "Read-only refusal on GICv2 and two-boot raw-FAT report persistence on GICv3 passed",
+    "existing_three_efi_applications_byte_identical": true,
+    "new_native_xnu_archive_compile": "Not yet qualified; prior c76c869 build does not cover SmdMemory or this teardown addition"
+  },
+  "efi_artifact": {
+    "name": "LumiaRpmHandoff.efi",
+    "bytes": 20992,
+    "sha256": "e382af423276f9a5c0ac31fa2243afba01771ef2d3b1259fa912873ace59944f"
+  },
+  "runtime_status": {
+    "handset_handshake_executed": false,
+    "native_post_handoff_mapping_qualified": false,
+    "native_rpm_ack_observed": false,
+    "resource_request_encoder_linked_into_handoff_app": false,
+    "gpu_rendered_frame_observed": false,
+    "60fps_observed": false,
+    "ios_boot_observed": false,
+    "post_exit_report_storage": "Screen only; preflight file contains no post-exit results"
+  }
+}

@@ -10,8 +10,8 @@ PYTHON=${PYTHON:-python3}
 ENTRY=${PROBE_ENTRY:-LumiaProbe}
 
 case "$ENTRY" in
-  LumiaProbe|LumiaHandoff|LumiaGpuProbe) ;;
-  *) echo "error: PROBE_ENTRY must be LumiaProbe, LumiaHandoff or LumiaGpuProbe" >&2; exit 1 ;;
+  LumiaProbe|LumiaHandoff|LumiaGpuProbe|LumiaRpmHandoff) ;;
+  *) echo "error: unknown PROBE_ENTRY: $ENTRY" >&2; exit 1 ;;
 esac
 
 if [ -z "$EDK2" ] || [ ! -f "$EDK2/MdePkg/Include/Uefi.h" ]; then
@@ -31,7 +31,7 @@ for component in ProbeCore FramebufferCore LumiaProbe LumiaHandoff; do
     -c "$ROOT/tools/uefi-probe/$component.c" -o "$OUT/objects/$component.obj"
 done
 
-for component in AdrenoCore IommuCore CommandStream GpuIo LpaeCore SmmuContext Submission PlatformCheck RpmCore SmdPipe; do
+for component in AdrenoCore IommuCore CommandStream GpuIo LpaeCore SmmuContext Submission PlatformCheck RpmCore SmdPipe SmdMemory; do
   "$CLANG" --target=aarch64-pc-windows-msvc -std=c++17 -Os \
     -ffreestanding -fno-builtin -fno-stack-protector -fshort-wchar \
     -fno-exceptions -fno-rtti -mno-stack-arg-probe -mgeneral-regs-only -mstrict-align \
@@ -39,7 +39,7 @@ for component in AdrenoCore IommuCore CommandStream GpuIo LpaeCore SmmuContext S
     -I "$ROOT/drivers/NativeAdreno418" \
     -c "$ROOT/drivers/NativeAdreno418/$component.cpp" -o "$OUT/objects/$component.obj"
 done
-for component in LumiaGpuProbe ReportStore FirmwareClock FirmwareSmem; do
+for component in LumiaGpuProbe LumiaRpmHandoff ReportStore FirmwareClock FirmwareSmem FirmwareMemory; do
   "$CLANG" --target=aarch64-pc-windows-msvc -std=c++17 -Os \
     -ffreestanding -fno-builtin -fno-stack-protector -fshort-wchar \
     -fno-exceptions -fno-rtti -mno-stack-arg-probe -mgeneral-regs-only -mstrict-align \
@@ -49,7 +49,7 @@ for component in LumiaGpuProbe ReportStore FirmwareClock FirmwareSmem; do
     -c "$ROOT/tools/uefi-probe/$component.cpp" -o "$OUT/objects/$component.obj"
 done
 
-for application in LumiaProbe LumiaHandoff LumiaGpuProbe; do
+for application in LumiaProbe LumiaHandoff LumiaGpuProbe LumiaRpmHandoff; do
   application_objects=("$OUT/objects/ProbeCore.obj")
   if [ "$application" = LumiaHandoff ]; then
     application_objects+=("$OUT/objects/FramebufferCore.obj")
@@ -58,6 +58,12 @@ for application in LumiaProbe LumiaHandoff LumiaGpuProbe; do
     application_objects+=("$OUT/objects/GpuIo.obj" "$OUT/objects/PlatformCheck.obj")
     application_objects+=("$OUT/objects/ReportStore.obj" "$OUT/objects/FirmwareClock.obj")
     application_objects+=("$OUT/objects/FirmwareSmem.obj")
+  fi
+  if [ "$application" = LumiaRpmHandoff ]; then
+    application_objects+=("$OUT/objects/FramebufferCore.obj" "$OUT/objects/PlatformCheck.obj")
+    application_objects+=("$OUT/objects/ReportStore.obj" "$OUT/objects/FirmwareSmem.obj")
+    application_objects+=("$OUT/objects/FirmwareMemory.obj")
+    application_objects+=("$OUT/objects/SmdMemory.obj" "$OUT/objects/SmdPipe.obj")
   fi
   "$LINKER" /machine:arm64 /subsystem:efi_application /entry:UefiMain \
     /nodefaultlib /base:0x400000 /dynamicbase /fixed:no /timestamp:0 \

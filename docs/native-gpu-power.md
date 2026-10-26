@@ -55,6 +55,12 @@ directly; its firmware lookup reads SMEM internally, and no IPC register is writ
 The native driver must qualify the actual memory map, channel ownership, cache attributes
 and notification path before treating them as usable.
 
+The matching revision's `DeviceMemoryMap.h` separately names **RPM MSG RAM at
+`0xfc428000`, size `0x8000`**, as nonsecure Device MMIO. The measured allocations are
+inside this aperture, not the fallback DRAM heap. Its IPC address lies in the published
+`0xf9000000` MMIO region. This resolves the source-level address classification; the
+new handoff test must still qualify the handset's actual EFI reservations and translations.
+
 ## Implemented components
 
 `drivers/NativeAdreno418/RpmCore.{h,cpp}` provides independently implemented, allocation-free
@@ -84,6 +90,45 @@ request encoding, ACK decoding and a serialized resource transaction engine:
   `CLOSED -> OPENING -> OPENED` polling handshake. Each endpoint resets its own indices.
   Resource traffic is disabled while opening. A failed handshake cannot be blindly
   retried on the same channel object.
+- Bounded native `OPENED -> CLOSING -> CLOSED` teardown accepts immediate CLOSED or
+  intermediate CLOSING replies, refuses unread data, and poisons uncertain completion.
+  Closing a channel does **not** cancel RPM votes or establish that a rail can be released.
+
+`drivers/NativeAdreno418/SmdMemory.{h,cpp}` binds that transport to bounded native accesses:
+
+- Only the published RPM message-RAM aperture and exact BIT0 IPC doorbell qualify.
+  Physical/virtual range overflow, overlap, a non-88-byte control block, and malformed
+  FIFO geometry are refused before translation or dereference.
+- First/last words and every crossed 4 KiB boundary must translate to the requested
+  nonsecure physical address for both EL1 reads and writes. Only Device-nGnRnE and
+  Device-nGnRE qualify; cached, Normal-NC and gathering mappings are not silently accepted.
+- Initial observation permits control-block reads only. Firmware exit, exclusive caller
+  ownership, revalidated mappings and eight identical CLOSED/empty snapshots are required
+  before writes. Stable snapshots are a quiescence check, not a substitute for ownership.
+- The callbacks prohibit writing the receive FIFO or remote-owned state/producer words.
+  Doorbell writes are exactly `1`, barrier ordered, with no doorbell read-modify-write.
+  Only a confirmed CLOSED channel can retire the binding; retired or poisoned bindings
+  cannot perform more I/O. The owner must pin the mappings and serialize all access.
+
+`tools/uefi-probe/LumiaRpmHandoff.cpp` is the first real AArch64 caller of this adapter.
+It is a **separate opt-in application**, not the v3 metadata probe. It requires the exact
+measured channel profile, the Lumia MSM8992 MADT, EL1, an active MMU, the timer, a valid
+framebuffer and non-reclaimable, UC-capable EFI MMIO descriptors covering both allocations
+and IPC. `AT S1E1R/W` checks inherited stage-1 mappings without loading from the doorbell.
+Those checks do not prove a successful bus transaction or qualify a future XNU page table.
+
+Volume Up deliberately exits firmware. With interrupts masked and no other native
+channel user started, the application waits boundedly for the firmware's close to settle,
+claims the closed channel, opens and closes it natively, then retires access. No RPM
+request encoder is linked and no resource packet, GPU register, clock or power register
+is written. Open/close notifications do reach RPM if the gates pass; this is not a
+read-only diagnostic. A failure retains the uncertain mapping until force reboot instead
+of retrying a partially completed handshake. The kernel IOService still does not call
+the adapter or publish a GPU service.
+
+Only pre-exit measurements can be saved using EFI file services. Post-exit results and
+indices are drawn by the CPU, with a heartbeat, and must be observed on the screen.
+Neither the new application nor its native handshake has run on the handset yet.
 
 Both components are single-caller internals, not a user-client ABI. The owner must
 serialize callers/interrupt handlers and keep the mapped shared memory alive while the
@@ -105,8 +150,16 @@ FIFO wrap directions, partial frames, producer/notification ordering, invalid in
 failed publication, native reopen and multiple correlated transactions across a simulated
 peer. Tests do not send real votes or power the handset GPU.
 
+The memory/teardown suite adds 170 checks for translation and reservation-independent
+binding, endpoint write ownership, delayed close, timeout, reset, changing metadata and
+mapping retirement. Another 25 mocked EFI memory-map checks cover descriptor stride,
+unaligned input, reservation bounds, duplicate/overlapping descriptors and reclaimable
+memory refusal. QEMU GICv2/v3 boots verify that the actual new EFI image refuses unsupported
+hardware before SMEM lookup, translation, MMIO access or firmware exit; QEMU does not emulate
+the Lumia RPM peer. See [the handoff instructions](../tools/uefi-probe/README.md#native-rpm-handoff-test).
+
 The EFI script cross-compiles the RPM/SMD cores but deliberately does **not** link them
-into the diagnostic. The separate v3 metadata helper is linked and has run on the phone;
+into `LumiaGpuProbe`. The separate v3 metadata helper is linked and has run on the phone;
 the normal probe and post-EBS display-test images remain unchanged. The updated XNU
 archive, including `RpmCore.o` and `SmdPipe.o`, compiled with the recorded ABI and linked
 in [run 40379567698](https://github.com/TwisstedToast/UniXNU-lumia950/actions/runs/40379567698),
@@ -117,7 +170,8 @@ GPU service. The kernel candidate is unqualified and has not been installed or b
 
 1. Discover and validate the handset's APPS-RPM SMEM channel, map its reserved buffers
    and IPC notification register, and bind the native callbacks after firmware handoff.
-   Only the word-access layout is implemented here; alternate layouts must be refused.
+   The native binding and one-shot open/close test now exist but need handset execution.
+   Only the word-access layout is implemented here; alternate layouts are refused.
 2. Implement the shared resource-vote/lease policy, qualify the actual graphics supply
    profile and parent rates, then sequence supplies, CX/GX GDSCs and the three branches.
    Preserve other consumers' votes; do not interpret a transport ACK as exclusive supply
@@ -140,6 +194,8 @@ GPU service. The kernel candidate is unqualified and has not been installed or b
 - [Firmware SMEM lookup at the displayed bootstrap revision](https://github.com/WOA-Project/Lumia950XLPkg/blob/0e7e24a/Driver/SmemDxe/smem.c)
 - [Firmware channel and IPC definition at that revision](https://github.com/WOA-Project/Lumia950XLPkg/blob/0e7e24a/Driver/SmdRpmDxe/smd.c)
 - [Firmware fallback SMEM and IPC configuration](https://github.com/WOA-Project/Lumia950XLPkg/blob/0e7e24a/Shared.dsc.inc)
+- [Matching firmware RPM message-RAM and MMIO classification](https://github.com/WOA-Project/Lumia950XLPkg/blob/0e7e24a/Include/Configuration/DeviceMemoryMap.h)
+- [Arm address translation instructions and PAR](https://developer.arm.com/-/media/Arm%20Developer%20Community/PDF/Learn%20the%20Architecture/LearnTheArchitecture-MemoryManagement-101811_0100_00_en.pdf)
 - [Published Lumia 950 GPU resources and PEP data](https://github.com/WOA-Project/Lumia950XLPkg/blob/0e7e24a/AcpiTables/8992/src/DSDT.asl)
 - [Reference SMD polling and ExitBootServices closure](https://github.com/WOA-Project/Lumia950XLPkg/blob/cfc68a4d19fc7e8645bff6d8fce7308ad8494a76/Driver/SmdRpmDxe/smd.c)
 - [Reference firmware RPM send/receive](https://github.com/WOA-Project/Lumia950XLPkg/blob/cfc68a4d19fc7e8645bff6d8fce7308ad8494a76/Driver/SmdRpmDxe/rpm-smd.c)

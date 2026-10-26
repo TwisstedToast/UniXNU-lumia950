@@ -163,6 +163,59 @@ Result openPipe(SmdPipe &pipe, const SmdIo &io, u32 controlBytes, u32 fifoBytes,
     return Result::TimedOut;
 }
 
+Result closePipe(SmdPipe &pipe, u32 pollBudget, u32 delayUs)
+{
+    if (pipe.state != PipeState::Ready) { return Result::NotReady; }
+    if (!pollBudget || pollBudget > 100000 || delayUs > 1000 ||
+        static_cast<u64>(pollBudget) * delayUs > 5000000) { return Result::Invalid; }
+    u32 reader = 0, writer = 0;
+    if (!ready(pipe) || !indices(pipe, 0, &reader, &writer) || reader != writer ||
+        !indices(pipe, kHalfBytes, &reader, &writer) || reader != writer) { return Result::NotReady; }
+    pipe.state = PipeState::Closing;
+    const SmdIo &io = pipe.io;
+    if (!write(pipe, SmdSpace::Control, kDtr, 0) ||
+        !write(pipe, SmdSpace::Control, kCts, 0) ||
+        !write(pipe, SmdSpace::Control, kCarrierDetect, 0) ||
+        !write(pipe, SmdSpace::Control, kMaskReceive, 1) || !io.barrier(io.context) ||
+        !write(pipe, SmdSpace::Control, kStreamState, 4) ||
+        !write(pipe, SmdSpace::Control, kStateUpdated, 1) ||
+        !io.barrier(io.context) || !io.notify(io.context)) {
+        poison(pipe, Transfer::IoError);
+        return Result::IoError;
+    }
+    bool localClosed = false;
+    for (u32 attempt = 0; attempt < pollBudget; ++attempt) {
+        u32 remote = 0, remoteDtr = 0;
+        if (!io.barrier(io.context) ||
+            !read(pipe, SmdSpace::Control, kHalfBytes + kStreamState, &remote) ||
+            !read(pipe, SmdSpace::Control, kHalfBytes + kDtr, &remoteDtr)) {
+            poison(pipe, Transfer::IoError);
+            return Result::IoError;
+        }
+        if (remote > 4) { poison(pipe, Transfer::Closed); return Result::IoError; }
+        if (!localClosed && (remote == 4 || remote == 0)) {
+            if (!write(pipe, SmdSpace::Control, kStreamState, 0) ||
+                !write(pipe, SmdSpace::Control, kStateUpdated, 1) ||
+                !io.barrier(io.context) || !io.notify(io.context)) {
+                poison(pipe, Transfer::IoError);
+                return Result::IoError;
+            }
+            localClosed = true;
+        } else if (localClosed && remote == 0 && remoteDtr == 0) {
+            if (!indices(pipe, 0, &reader, &writer) || reader != writer ||
+                !indices(pipe, kHalfBytes, &reader, &writer) || reader != writer) {
+                poison(pipe, Transfer::IoError);
+                return Result::IoError;
+            }
+            pipe.state = PipeState::Closed;
+            return Result::Ok;
+        }
+        if (attempt + 1 < pollBudget) { io.delayUs(io.context, delayUs); }
+    }
+    poison(pipe, Transfer::Closed);
+    return Result::TimedOut;
+}
+
 Transfer sendPacket(SmdPipe &pipe, const u8 *bytes, u32 size)
 {
     if (pipe.state != PipeState::Ready) { return Transfer::Closed; }
