@@ -92,6 +92,7 @@ request encoding, ACK decoding and a serialized resource transaction engine:
   retried on the same channel object.
 - Bounded native `OPENED -> CLOSING -> CLOSED` teardown accepts immediate CLOSED or
   intermediate CLOSING replies, refuses unread data, and poisons uncertain completion.
+  The polling opener/closer acknowledges the remote state-updated flags as their consumer.
   Closing a channel does **not** cancel RPM votes or establish that a rail can be released.
 
 `drivers/NativeAdreno418/SmdMemory.{h,cpp}` binds that transport to bounded native accesses:

@@ -79,6 +79,7 @@ struct Device {
             expect(value == 1, "native notification writes only BIT0, never a read-modify-write");
             ++device.notifications;
             if (!device.peer) { return true; }
+            device.control[18] = 1;
             if (device.control[0] == 1) {
                 device.control[11] = 2;
                 device.control[12] = 1;
@@ -262,7 +263,7 @@ void testNativeRoundTrip()
         expect(retireMemory(binding, pipe) == Result::NotReady, "open channel mappings cannot be retired");
         expect(closePipe(pipe, 20, 100) == Result::Ok && pipe.state == PipeState::Closed &&
                device.control[0] == 0 && device.control[11] == 0 && device.control[1] == 0 &&
-               device.control[12] == 0 && device.notifications == 4,
+               device.control[12] == 0 && device.control[18] == 0 && device.notifications == 4,
                "native close handles immediate CLOSED and CLOSING peer responses without firmware calls");
         const u8 unused[4] = {};
         expect(sendPacket(pipe, unused, sizeof(unused)) == Transfer::Closed &&

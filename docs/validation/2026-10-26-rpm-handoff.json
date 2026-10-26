@@ -4,7 +4,7 @@
   "source_sha256": {
     "drivers/NativeAdreno418/SmdMemory.cpp": "79428b2c322dc9b2afb715d78a69b745ccd491041b0ad17e7184c188ba4c8268",
     "drivers/NativeAdreno418/SmdMemory.h": "175f4027ac7d774bacb79269d1f226d20729fdaf087fda51b909f2ae3d3daadf",
-    "drivers/NativeAdreno418/SmdPipe.cpp": "7b919e8187e7fc34ba38ab86e4f382d615e854204e79d2a6ceab80855d749335",
+    "drivers/NativeAdreno418/SmdPipe.cpp": "062c676b647c485ee521bfeddc4d51ddb9d5675aa12e1ab04d6c0fd7abf90b06",
     "tools/uefi-probe/LumiaRpmHandoff.cpp": "3f93566a89d8af125672860fcf3a6c3d707310d6bcb7c2e1388785f50fdf643f",
     "tools/uefi-probe/FirmwareMemory.cpp": "f13184718cf4fd7bfe51e433d4f7f89798e72bce1c6244b3c71c5fa674324998"
   },
@@ -38,8 +38,8 @@
   },
   "efi_artifact": {
     "name": "LumiaRpmHandoff.efi",
-    "bytes": 20992,
-    "sha256": "e382af423276f9a5c0ac31fa2243afba01771ef2d3b1259fa912873ace59944f"
+    "bytes": 21504,
+    "sha256": "90ec4e2516022a8ecbaab48124fbeffd8e6a44e6ce5180d2abc612663b71af95"
   },
   "runtime_status": {
     "handset_handshake_executed": false,
