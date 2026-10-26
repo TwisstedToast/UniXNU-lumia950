@@ -24,7 +24,7 @@ def main():
         image = blocked_image if blocked else args.image
         command = [args.qemu, "-M", "virt,gic-version=2,virtualization=on,secure=" + ("on" if secure else "off"),
                    "-cpu", "cortex-a53", "-accel", "tcg", "-m", "128M", "-smp", "2",
-                   "-nographic", "-monitor", "none", "-no-reboot",
+                   "-nographic", "-monitor", "none", "-nic", "none", "-no-reboot",
                    "-semihosting-config", "enable=on,target=native", "-kernel", str(image.resolve())]
         try:
             result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,

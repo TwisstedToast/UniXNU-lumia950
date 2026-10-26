@@ -59,7 +59,7 @@ def run_test(arguments: argparse.Namespace) -> None:
             executable, "-machine", f"virt,gic-version={arguments.gic_version}",
             "-cpu", "cortex-a53", "-smp", "1", "-m", "768",
             "-bios", str(firmware), "-display", "none", "-serial", "stdio",
-            "-monitor", "none", "-no-reboot", "-device", "ramfb",
+            "-monitor", "none", "-nic", "none", "-no-reboot", "-device", "ramfb",
             "-qmp", f"unix:{socket_path},server=on,wait=off",
             "-drive", f"if=none,id=probe,format=raw,readonly=on,file=fat:ro:{esp}",
             "-device", "virtio-blk-pci,drive=probe",

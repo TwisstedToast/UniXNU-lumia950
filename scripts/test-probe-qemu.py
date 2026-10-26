@@ -30,7 +30,7 @@ def run_probe(arguments: argparse.Namespace) -> str:
         executable, "-machine", f"virt,gic-version={arguments.gic_version}",
         "-cpu", "cortex-a57", "-smp", "1", "-m", "768",
         "-bios", str(firmware), "-display", "none", "-serial", "stdio",
-        "-monitor", "none", "-no-reboot", "-device", "virtio-gpu-pci",
+        "-monitor", "none", "-nic", "none", "-no-reboot", "-device", "virtio-gpu-pci",
         "-drive", f"if=none,id=probe,format=raw,{disk}",
         "-device", "virtio-blk-pci,drive=probe",
     ]

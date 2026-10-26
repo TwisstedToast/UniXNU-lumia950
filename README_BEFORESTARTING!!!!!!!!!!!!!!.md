@@ -17,16 +17,20 @@ Do not say a driver works, or even builds, because `py_compile`, `g++` on the ho
 
 ```sh
 # The job that compiles every driver listed in [kernel] archives of board.toml:
-gh workflow run build.yml -f target=kernel --repo ManGuy-Legend/UniXNU-lumia950
+gh workflow run build.yml -f target=kernel --repo TwisstedToast/UniXNU-lumia950
 
 # See it, follow it, get the artifact:
-gh run list --workflow build.yml --repo ManGuy-Legend/UniXNU-lumia950
-gh run watch <run-id> --repo ManGuy-Legend/UniXNU-lumia950
-gh run download <run-id> -n lumia950-kernel --repo ManGuy-Legend/UniXNU-lumia950
+gh run list --workflow build.yml --repo TwisstedToast/UniXNU-lumia950
+gh run watch <run-id> --repo TwisstedToast/UniXNU-lumia950
+gh run download <run-id> -n lumia950-kernel --repo TwisstedToast/UniXNU-lumia950
 ```
 
 `target` is `payload`, `kernel` or `both`; the default is `payload`, so **name `kernel`
 explicitly** or you get the EFI build and no driver compile at all.
+
+CI pins UniXNU to `1a01c2afa197d975d04da892325c56b6b14aaecb`, the base of the
+successful 2026-10-24 kernel build. Its 16.x overlay is not qualified against a moving
+upstream `main`; changing that pin requires revalidating the patch and driver ABI.
 
 | Job | Runs when | What it is the only proof of | Artifact |
 | --- | --- | --- | --- |

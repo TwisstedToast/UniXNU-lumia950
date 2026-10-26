@@ -39,7 +39,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: UniXNU/UniXNU
-          ref: main
+          ref: 1a01c2afa197d975d04da892325c56b6b14aaecb
           path: unixnu
 
       - uses: actions/setup-python@v5
@@ -342,7 +342,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: UniXNU/UniXNU
-          ref: main
+          ref: 1a01c2afa197d975d04da892325c56b6b14aaecb
           path: unixnu
 
       - uses: actions/setup-python@v5
@@ -402,7 +402,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: UniXNU/UniXNU
-          ref: main
+          ref: 1a01c2afa197d975d04da892325c56b6b14aaecb
           path: unixnu
 
       - uses: actions/setup-python@v5
