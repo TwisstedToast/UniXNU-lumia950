@@ -6,6 +6,7 @@
 #include "PlatformCheck.h"
 #include "ReportStore.h"
 #include "FirmwareClock.h"
+#include "FirmwareSmem.h"
 
 extern "C" {
 #include "ProbeCore.h"
@@ -155,7 +156,7 @@ extern "C" EFI_STATUS EFIAPI UefiMain(EFI_HANDLE image, EFI_SYSTEM_TABLE *firmwa
         return EFI_INVALID_PARAMETER;
     }
     firmware->ConOut->ClearScreen(firmware->ConOut);
-    Print("LUMIA 950 | GPU PREFLIGHT v2\r\n");
+    Print("LUMIA 950 | GPU PREFLIGHT v3\r\n");
     Print("No GPU, power, clock, SMMU or firmware-variable writes.\r\n");
     Print("This is NOT GPU acceleration or iOS.\r\n");
     if (!AcpiMatches()) {
@@ -171,6 +172,21 @@ extern "C" EFI_STATUS EFIAPI UefiMain(EFI_HANDLE image, EFI_SYSTEM_TABLE *firmwa
             Print("FW_TIMER_CLOCK="); Print(clocks.timerListed ? "LISTED\r\n" : "NOT_REGISTERED\r\n");
             Print("Clock lookup only; no enable or rate calls.\r\n");
         }
+        const ProbeFirmwareSmem smem = ProbeFindFirmwareSmem(firmware->BootServices);
+        PrintHex("SMEM_STATUS", smem.status);
+        Print("SMEM_PROTOCOL="); Print(smem.protocolPresent ? "PRESENT\r\n" : "UNAVAILABLE\r\n");
+        Print("SMEM_STAGE="); Print(ProbeSmemStageName(smem.stage)); Print("\r\n");
+        PrintHex("SMEM_CHANNEL_COUNT", smem.channelCount);
+        if (smem.channelCount == 1) {
+            PrintHex("SMEM_CHANNEL_ID", smem.channelId);
+            PrintHex("SMEM_CHANNEL_TYPE", smem.channelType);
+            PrintHex("SMEM_REF_COUNT", smem.referenceCount);
+            PrintHex("SMEM_CONTROL_ADDRESS", smem.controlAddress);
+            PrintHex("SMEM_CONTROL_BYTES", smem.controlBytes);
+            PrintHex("SMEM_FIFO_ADDRESS", smem.fifoAddress);
+            PrintHex("SMEM_FIFO_BYTES", smem.fifoBytes);
+        }
+        Print("SMEM metadata only; no channel or IPC writes.\r\n");
         using namespace adreno;
         const RegisterIo io = {nullptr, MmioRead, nullptr, nullptr, nullptr};
         GpuSnapshot snapshot = {};

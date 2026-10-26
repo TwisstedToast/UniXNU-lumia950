@@ -20,10 +20,34 @@ sequence. The LG/Qualcomm reference regulator's resource mapping and corner valu
 have **not** been qualified against this Lumia's actual PMIC configuration. They are
 not silently installed as a handset power profile.
 
+The published Lumia 950 ACPI source independently describes GPU registers at
+`0xfdb00000` for `0x10000` bytes, shader memory at `0xfdb20000` for `0x1f000` bytes,
+and interrupt 65 (SPI 33). Its PEP data names the two OxiLi footswitches, three branch
+clocks, and `/clk/oxili` as a required resource. The broader `0x40000` KGSL window
+in the Linux reference also spans the separately described SMMU region; future native
+mappings must account for that overlap rather than treating every byte as a GPU register.
+These ACPI values come from published firmware source, not a dump of this handset, and
+the Windows PEP operation numbers are not a qualified native power sequence.
+
 The published Lumia firmware's `rpm_send_data` calls a receive routine with unbounded
 FIFO waits; it does not expose a checked, correlated ACK result to its caller. That
 firmware's ExitBootServices handler also closes the SMD-RPM channel. Retaining a DXE
 function pointer is therefore not a native post-handoff resource manager.
+
+The published firmware revision matching the bootstrap hash prefix seen on this phone
+defines an APPS-RPM channel table and a shared-memory lookup protocol. GPU preflight v3
+can query that protocol, copy the bounded channel table, and report the matching channel's
+control/FIFO addresses and sizes without opening the channel, issuing resource votes,
+or writing the IPC register. This is firmware-provided metadata, not proof that the
+memory remains reserved, coherently mapped, or exclusively owned after handoff. No v3
+on-phone result has been recorded yet.
+
+That firmware source configures a 2 MiB shared-memory fallback at `0x06a00000` and an
+RPM IPC doorbell at `0xf900d008`. They are reference values, not handset measurements;
+the SMEM library can also select a dynamic base. V3 does not access these addresses
+directly; its firmware lookup reads SMEM internally, and no IPC register is written.
+The native driver must qualify the actual memory map, channel ownership, cache attributes
+and notification path before treating them as usable.
 
 ## Implemented components
 
@@ -104,5 +128,9 @@ IOKit build has not run. No new phone application or firmware image is installed
 - [Reference regulator configuration, not a Lumia-qualified profile](https://github.com/LineageOS/android_kernel_lge_msm8992/blob/d25caae7761fc0dae85091fea7aa5a0a5006ea58/arch/arm/boot/dts/qcom/msm8992-regulator.dtsi)
 - [RPM request and response protocol](https://github.com/torvalds/linux/blob/v6.12/drivers/soc/qcom/smd-rpm.c)
 - [Lumia word-access SMD layout](https://github.com/WOA-Project/Lumia950XLPkg/blob/cfc68a4d19fc7e8645bff6d8fce7308ad8494a76/Driver/SmdRpmDxe/smd.h)
+- [Firmware SMEM lookup at the displayed bootstrap revision](https://github.com/WOA-Project/Lumia950XLPkg/blob/0e7e24a/Driver/SmemDxe/smem.c)
+- [Firmware channel and IPC definition at that revision](https://github.com/WOA-Project/Lumia950XLPkg/blob/0e7e24a/Driver/SmdRpmDxe/smd.c)
+- [Firmware fallback SMEM and IPC configuration](https://github.com/WOA-Project/Lumia950XLPkg/blob/0e7e24a/Shared.dsc.inc)
+- [Published Lumia 950 GPU resources and PEP data](https://github.com/WOA-Project/Lumia950XLPkg/blob/0e7e24a/AcpiTables/8992/src/DSDT.asl)
 - [Reference SMD polling and ExitBootServices closure](https://github.com/WOA-Project/Lumia950XLPkg/blob/cfc68a4d19fc7e8645bff6d8fce7308ad8494a76/Driver/SmdRpmDxe/smd.c)
 - [Reference firmware RPM send/receive](https://github.com/WOA-Project/Lumia950XLPkg/blob/cfc68a4d19fc7e8645bff6d8fce7308ad8494a76/Driver/SmdRpmDxe/rpm-smd.c)

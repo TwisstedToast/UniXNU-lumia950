@@ -73,6 +73,13 @@ all previous reports and existing files must remain unchanged. Writable director
 testing while the equivalent raw block image passed. Normal read-only smoke tests still
 require `EFI_WRITE_PROTECTED` at `CREATE_FILE`. Neither test targets a physical disk.
 
+GPU preflight v3 also queries the Qualcomm SMEM protocol when the platform check passes.
+It reads the 64-entry channel-allocation table and reports one unambiguous APPS-RPM
+channel's ID, reference count, control buffer and FIFO. It refuses malformed or
+overlapping layouts and never opens the channel, writes shared memory or rings the IPC
+doorbell. These addresses are observations from boot services, not a qualified native
+post-handoff mapping. The v3 application has not yet been run on the handset.
+
 The clock lookup ABI is pinned to Lumia950XLPkg revision
 `cfc68a4d19fc7e8645bff6d8fce7308ad8494a76`, `Include/Protocol/QcomClock.h` and
 `Driver/ClockDxe/clock.c`. Only its first `clk_get(const char *)` entry is called, with

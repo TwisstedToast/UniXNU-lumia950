@@ -19,3 +19,8 @@ mkdir -p "$OUT"
   "$ROOT/tools/uefi-probe/ReportStore.cpp" "$ROOT/tools/uefi-probe/FirmwareClock.cpp" \
   "$ROOT/tools/uefi-probe/Test/check-report-store.cpp" -o "$OUT/check-report-store"
 "$OUT/check-report-store"
+"$CXX" -std=c++17 -fshort-wchar -Wall -Wextra -Werror -fsanitize=address,undefined \
+  -I "$EDK2/MdePkg/Include" -I "$EDK2/MdePkg/Include/$architecture" \
+  "$ROOT/tools/uefi-probe/FirmwareSmem.cpp" \
+  "$ROOT/tools/uefi-probe/Test/check-firmware-smem.cpp" -o "$OUT/check-firmware-smem"
+"$OUT/check-firmware-smem"

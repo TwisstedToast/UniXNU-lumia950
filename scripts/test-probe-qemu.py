@@ -94,7 +94,7 @@ def run_report_test(arguments: argparse.Namespace) -> str:
             if len(current) != len(reports) + 1 or any(current.get(name) != data for name, data in reports.items()):
                 raise ValueError("report append/preservation check failed")
             new_name = next(name for name in current if name not in reports)
-            beginning = transcript.index("LUMIA 950 | GPU PREFLIGHT v2")
+            beginning = transcript.index("LUMIA 950 | GPU PREFLIGHT v3")
             ending = transcript.index("GPU PROBE COMPLETE\n", beginning) + len("GPU PROBE COMPLETE\n")
             expected = transcript[beginning:ending].encode("ascii")
             if current[new_name].replace(b"\r\n", b"\n") != expected:
@@ -135,7 +135,7 @@ def main() -> None:
         arguments.log.parent.mkdir(parents=True, exist_ok=True)
         arguments.log.write_text(transcript)
     print(transcript)
-    required = (["LUMIA 950 | GPU PREFLIGHT v2", "PLATFORM_UNSUPPORTED: MMIO reads skipped.",
+    required = (["LUMIA 950 | GPU PREFLIGHT v3", "PLATFORM_UNSUPPORTED: MMIO reads skipped.",
                  "GPU PROBE COMPLETE", "Returning to firmware."] if arguments.application == "gpu"
                 else ["LUMIA 950 | UEFI BRING-UP PROBE v1", "Disk writes: NONE",
                       "CurrentEL: EL1", "DarwinBoot EL1: OK", "GOP:",
@@ -150,7 +150,7 @@ def main() -> None:
     if missing:
         parser.exit(1, "error: missing smoke-test evidence: " + ", ".join(missing) + "\n")
     if arguments.application == "gpu":
-        if "PLATFORM_MSM8992" in transcript or "GPU_STATE=" in transcript:
+        if "PLATFORM_MSM8992" in transcript or "GPU_STATE=" in transcript or "SMEM_PROTOCOL=" in transcript:
             parser.exit(1, "error: QEMU must never access Lumia MMIO\n")
         print(f"QEMU GICv{arguments.gic_version}: unsupported-platform refusal and return passed")
         if not arguments.writable_report_test:

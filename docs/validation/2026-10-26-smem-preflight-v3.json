@@ -1,0 +1,40 @@
+{
+  "date": "2026-10-26",
+  "scope": "Read-only firmware SMEM channel discovery for the native GPU power path",
+  "source_sha256": {
+    "tools/uefi-probe/FirmwareSmem.h": "699c7142e93c9da4d2d6be07d3ff5fac0ff36b52d47ffbdd5fca15fa43740c31",
+    "tools/uefi-probe/FirmwareSmem.cpp": "27aa8a8bad9a242658fc12860707c6e65b35d50d528faad9ddbf87836d8a6d0b",
+    "tools/uefi-probe/Test/check-firmware-smem.cpp": "5e318246174a758c4b2e1d03411293e81e19a34a4b71da728ab4a3a7700a136d",
+    "tools/uefi-probe/LumiaGpuProbe.cpp": "af636f356d8d57f40b2520db0c5aeeefd99e914484db8098a986d6f59ba1408d"
+  },
+  "firmware_reference": {
+    "repository": "WOA-Project/Lumia950XLPkg",
+    "revision_prefix": "0e7e24a",
+    "scope": "Published source matching the photographed bootstrap hash prefix; exact installed binary remains unverified"
+  },
+  "validation": {
+    "mock_smem_protocol": "66 ASan/UBSan checks, zero failures",
+    "mock_report_and_clock": "409 ASan/UBSan checks, zero failures",
+    "aarch64_efi_crosscompile": true,
+    "strict_integer_warnings": "-Wconversion -Wsign-conversion -Werror passed for FirmwareSmem.cpp",
+    "qemu_gic_versions": [2, 3],
+    "qemu_platform_refusal": true,
+    "qemu_report_persistence": "Two boots per GIC version; previous reports and existing ESP files preserved",
+    "qemu_smem_protocol_exercised": false
+  },
+  "efi_sha256": {
+    "LumiaGpuProbe.efi": "6d53dde9ddfd449518c80390ba3a0b920bd60bf4e4285b2510e7e46bc79eed65",
+    "LumiaHandoff.efi": "c7b1569099af9ac41af1424cf161b7b03afa8078532488e2536e2aba2f678b2d",
+    "LumiaProbe.efi": "fbf9e4c469871d3c516e61a8b0e5ebf8459cf562deba21e3064293b2bb2e2b41"
+  },
+  "runtime_status": {
+    "installed_on_phone": true,
+    "executed_on_phone": false,
+    "native_post_handoff_mapping_qualified": false,
+    "channel_opened_or_ipc_written": false,
+    "gpu_powered_on": false,
+    "gpu_rendered_frame_observed": false,
+    "60fps_observed": false,
+    "ios_boot_observed": false
+  }
+}
