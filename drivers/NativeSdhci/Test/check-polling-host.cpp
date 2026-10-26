@@ -199,7 +199,7 @@ struct FakeHost {
                 --fake.presentDelay;
                 return kPresentCmdInhibit | kPresentDataInhibit;
             }
-            return fake.inhibit | (fake.bufferEmitted && fake.wordCount < 128 ? kPresentBufferRead : 0);
+            return fake.inhibit | (fake.bufferEmitted && fake.wordCount < 128 ? static_cast<u32>(kPresentBufferRead) : 0u);
         }
         if (offset >= kRegResponse && offset < kRegResponse + 16) return fake.response[(offset - kRegResponse) / 4];
         if (offset == kRegBufferPort) {

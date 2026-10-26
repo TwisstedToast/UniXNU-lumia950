@@ -106,7 +106,7 @@ bool PollingHost::issue(u8 index, u32 argument, ResponseType type, bool data, u3
     }
 
     const u32 inhibit = kPresentCmdInhibit |
-                        ((data || type == ResponseType::R1Busy) ? kPresentDataInhibit : 0);
+                        ((data || type == ResponseType::R1Busy) ? static_cast<u32>(kPresentDataInhibit) : 0u);
     bool available = false;
     for (u32 poll = 0; poll < limits.commandPolls; ++poll) {
         if (!(io.read32(io.context, kRegPresentState) & inhibit)) {
