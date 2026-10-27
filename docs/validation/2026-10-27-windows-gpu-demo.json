@@ -1,0 +1,48 @@
+{
+  "schema": "lumia950-windows-gpu-baseline-validation-v1",
+  "date": "2026-10-27",
+  "source_commit": "23b3a4bbe69f193e1e65f3abe50745947a2c32ef",
+  "ci": {
+    "run": 40477177539,
+    "url": "https://github.com/TwisstedToast/UniXNU-lumia950/actions/runs/40477177539",
+    "conclusion": "success",
+    "timing_checks": 25,
+    "arm64_msvc_build": "success",
+    "x64_msvc_build": "success",
+    "microsoft_hlsl_compilation": "success",
+    "shader_check_created_gpu_device": false,
+    "artifact_id": 12721387649,
+    "artifact_bytes": 87570,
+    "artifact_sha256": "5480a6976513448521fb1fdb4a146e3c56eab6ce2f5705e3af6ea00f36b14a0a"
+  },
+  "distributed_binary": {
+    "compiler": "MSVC ARM64",
+    "machine": "0xaa64",
+    "subsystem": "Windows GUI",
+    "bytes": 178176,
+    "sha256": "8fa6dedc68b84395680ea23d01170a352aac767974f8c409fb62257947446680",
+    "ssd_directory": "/Volumes/bludssd/Lumia950-GPU-demo",
+    "delayed_ssd_hash_verified": true
+  },
+  "local_validation": {
+    "timing_asan_ubsan": "25 checks, zero failures",
+    "zig_0_15_2_arm64_build": "success",
+    "wrong_architecture_pe_rejected": true,
+    "python_syntax": "success",
+    "shell_syntax": "success",
+    "diff_whitespace": "success",
+    "linker_output_staged_on_native_temporary_filesystem": true
+  },
+  "handset": {
+    "usb_mass_storage_detected": true,
+    "windows_graphics_system_dlls_verified_arm64": ["d3d11.dll", "dxgi.dll", "D3DCompiler_47.dll"],
+    "existing_windows_desktop_boot_confirmed": false,
+    "application_executed": false,
+    "rendered_frame_observed": false,
+    "gpu_timestamps_observed": false,
+    "display_fps_measured": false,
+    "native_ios_gpu_support_established": false,
+    "boot_files_written": false,
+    "bootaa64_sha256_unchanged": "b782ee89bb670a62bf48de079554b94d43c22944ed24add723d93aac82ee34fc"
+  }
+}

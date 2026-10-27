@@ -113,6 +113,17 @@ milestone. This batch does not fabricate the missing inputs:
 - Actual inherited SMMU stream/security configuration. Unsupported state needs a
   separately verified ownership/security handover, not a guessed SCM call.
 
+The upstream Linux v6.12 Lumia board description adds an important distinction
+from the LG example: its `vdd_gfx` is PMI8994's directly controlled SPMI `s2`,
+with a fixed 980000-microvolt constraint. The PMI8994 node is on SPMI USID 3,
+and the regulator driver's `s2` control peripheral starts at `0x1700`.
+These are static board-description/register facts, **not a measurement of this
+phone's regulator or permission to write it**. They do not establish that an RPM
+`smpb` supply lease is the correct Lumia supply path. The current all-RPM power
+plan must not be activated by filling its synthetic supply slot with LG values.
+A real board adapter needs to qualify and retain the actual direct supply state,
+in addition to the remote clock/bus contracts.
+
 The phone's existing Windows PEP driver was copied from its **read-only** volume for
 local research. Its static table independently confirms `/clk/oxili -> clk2, ID 1`,
 with KHz units. It does not reveal live RPM votes or establish a complete regulator
@@ -139,6 +150,11 @@ must not be presented as a GPU-accelerated wallpaper or an iOS graphics driver.
   `0x240..0x24e`; `CP_PROTECT_REG_10` names hexadecimal slot 0x10, not decimal slot 10.
 - [Linux ARM SMMU register definitions](https://github.com/torvalds/linux/blob/v6.12/drivers/iommu/arm/arm-smmu/arm-smmu.h):
   ID/geometry, SMR/S2CR/CBAR and privileged/unprivileged read/write ATS registers.
+- [Linux v6.12 Lumia board supply description](https://github.com/torvalds/linux/blob/v6.12/arch/arm64/boot/dts/qcom/msm8994-msft-lumia-octagon.dtsi),
+  [PMI8994 SPMI node](https://github.com/torvalds/linux/blob/v6.12/arch/arm64/boot/dts/qcom/pmi8994.dtsi)
+  and [SPMI regulator definitions](https://github.com/torvalds/linux/blob/v6.12/drivers/regulator/qcom_spmi-regulator.c):
+  the board's fixed `vdd_gfx` constraint, USID and control-peripheral address;
+  not evidence of a successful native GPU run on this handset.
 
 These references explain the software's register facts, not validation of their
 effects on this handset. The new public platform contracts remain unfulfilled until
