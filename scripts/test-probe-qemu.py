@@ -13,6 +13,12 @@ import time
 from probe_fat import read_files
 
 
+def guard_finished(transcript):
+    return any(marker in transcript for marker in (
+        b"NATIVE MMIO GUARD FAILED", b"NATIVE SCM GUARD FAILED",
+        b"SCM_QUERY_RETURNED_UNSUPPORTED", b"SCM_UNDEFINED_TRAP_RECOVERED"))
+
+
 def run_probe(arguments: argparse.Namespace) -> str:
     executable = shutil.which(arguments.qemu)
     if executable is None:
@@ -52,7 +58,7 @@ def run_probe(arguments: argparse.Namespace) -> str:
                     if not chunk:
                         break
                     transcript.extend(chunk)
-                    if b"NATIVE MMIO GUARD PASSED" in transcript or b"NATIVE MMIO GUARD FAILED" in transcript:
+                    if guard_finished(transcript):
                         break
                     completed = b"PROBE COMPLETE" in transcript or b"RPM HANDOFF REFUSED" in transcript
                     if completed and not sent_return:

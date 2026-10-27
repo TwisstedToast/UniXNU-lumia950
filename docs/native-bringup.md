@@ -203,7 +203,9 @@ and service results, permits only bounded interrupted-call resumes with the A6
 cookie, and never guesses another ABI or retries a busy/error response. A monitor
 call that never returns cannot be cancelled by that budget. The native bridge
 refuses every global SMMU address and every direct SMMU write. Only context banks
-0 and 1 are inspected; bank 2, global routes and security registers remain untouched.
+0 and 1 are inspected; native MMIO leaves bank 2, global routes and security
+registers untouched. The secure restore may reconfigure device 18's global state
+inside firmware; that is distinct from native global-register readback.
 Valid-field masks distinguish real zero values from missing reads. Existing enabled
 contexts or faults remain unchanged and stop qualification. Partial GPU success is
 shown separately from SMMU failure. This establishes no global-route readback,
