@@ -38,7 +38,16 @@
     "oxili_name": "VDD_OXILI",
     "oxili_register_offset_field": "0xc4024",
     "gfx3d_clock_name": "oxili_gfx3d_clk",
-    "gfx3d_clock_register_offset_fields": ["0xc4028", "0xc4020"]
+    "gfx3d_clock_register_offset_fields": ["0xc4028", "0xc4020"],
+    "gx_domain_operation_table_va": "0x14012dc28",
+    "gx_enable_callback_va": "0x1400852a0",
+    "gx_disable_callback_va": "0x140085380",
+    "gx_ff_retention_list_va": "0x14012d158",
+    "gx_memory_retention_list_va": "0x14012d110",
+    "gx_retention_clock_definition_va": "0x14012d0d8",
+    "gx_retention_clock": "oxili_gfx3d_clk",
+    "gx_enable_retention_masks": ["0x4000", "0x2000"],
+    "gx_enable_callback_observation": "After requesting domain enable and observing power-on in software-control mode, this callback sets bit 14 for FF-retention clocks and bit 13 for memory-retention clocks. Both GX lists name the core clock. This does not establish the complete rail, bus or shutdown policy."
   },
   "qualification": {
     "clock_resource_static_mapping_confirmed": true,

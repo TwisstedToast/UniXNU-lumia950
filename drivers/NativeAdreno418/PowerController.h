@@ -7,6 +7,8 @@
 namespace adreno {
 namespace power {
 
+constexpr u32 kCoreRetentionMask = 0x6000;
+
 enum class VoteRole : u32 { Supply, ConfigurationBus, MemoryBus, GraphicsClock };
 struct Vote {
     VoteRole role;

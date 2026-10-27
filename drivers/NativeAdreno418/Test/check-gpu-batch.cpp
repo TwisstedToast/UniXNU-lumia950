@@ -23,7 +23,7 @@ enum class Fault {
     GxOn, BranchOn, SpTpOn, Protection, RouteBypass, RouteAlias, ContextEnabled,
     ContextReadback, TlbBusy, AtsFault, AtsWrongPhysical, SecondContextAts,
     CpStall, BadFence, CorruptFill, DestinationGuard, FenceGuard, HaltBusy,
-    DisableContext, SpTpOff, GxOff, ReleaseAckLost, CloseSilent, Retirement, AtsWriteFault
+    DisableContext, SpTpOff, GxOff, ReleaseAckLost, CloseSilent, Retirement, AtsWriteFault, Retention
 };
 
 struct Device {
@@ -277,8 +277,12 @@ struct Device {
                 if (offset == 0x4024 && device.fault == Fault::GxOn) { value &= ~0x80000000u; }
                 if (offset == 0x4024 && device.fault == Fault::GxOff && (value & 1)) { value |= 0x80000000u; }
             } else {
+                if (offset == 0x4028 && (value & 1) && (value & 0x6000) != 0x6000) {
+                    device.violation = true; return false;
+                }
                 value = (value & 1) ? value & ~0x80000000u : value | 0x80000000u;
                 if (device.fault == Fault::BranchOn && offset == 0x403c) { value |= 0x80000000u; }
+                if (device.fault == Fault::Retention && offset == 0x4028) { value &= ~0x6000u; }
             }
             device.mmss[offset / 4] = value;
             return true;
@@ -469,6 +473,8 @@ void testSuccess()
         "ME initialization plus two complementary poisoned-target memory-write submissions are verified");
     expect(device->batch.dmaReusable && !device->batch.resourcesPinned && device->quiescent() && device->closed,
         "DMA becomes reusable only after CP halt, both banks disabled, SP/TP off, domains off, votes restored and channel retired");
+    expect(device->mmss[0x4028 / 4] == 0x80000ff0,
+        "GX core-clock FF/memory-retention bits are asserted before enabling and restored after verified collapse");
     expect(device->batch.memory.state == rpm::MemoryState::Retired && device->batch.pipe.state == rpm::PipeState::Closed,
         "real native memory and SMD state machines retire the channel");
     const std::vector<u32> resources = {0, 1, 2, 3, 3, 2, 1, 0};
@@ -541,6 +547,7 @@ void testFailures()
         {Fault::AckLost, BatchStage::Powering}, {Fault::AckMalformed, BatchStage::Powering},
         {Fault::AckError, BatchStage::Powering}, {Fault::AckStale, BatchStage::Powering},
         {Fault::GxOn, BatchStage::Powering}, {Fault::BranchOn, BatchStage::Powering},
+        {Fault::Retention, BatchStage::Powering},
         {Fault::SpTpOn, BatchStage::Initializing}, {Fault::Protection, BatchStage::Initializing},
         {Fault::RouteBypass, BatchStage::Routing}, {Fault::RouteAlias, BatchStage::Routing},
         {Fault::ContextEnabled, BatchStage::Routing}, {Fault::ContextReadback, BatchStage::Binding},

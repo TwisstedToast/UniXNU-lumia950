@@ -67,6 +67,16 @@ Result branch(Controller &controller, u32 offset, bool enabled, u32 budget)
     return Result::TimedOut;
 }
 
+Result retention(Controller &controller, bool enabled)
+{
+    u32 current = 0;
+    if (!read(controller, kCoreClockOffset, current)) { return Result::IoError; }
+    const u32 bits = enabled ? kCoreRetentionMask : controller.initial.coreClock & kCoreRetentionMask;
+    if (!write(controller, kCoreClockOffset, (current & ~kCoreRetentionMask) | bits) ||
+        !read(controller, kCoreClockOffset, current)) { return Result::IoError; }
+    return (current & kCoreRetentionMask) == bits ? Result::Ok : Result::NotReady;
+}
+
 bool valuesMatch(const Vote &vote, const rpm::VoteSpec &spec)
 {
     if (vote.count != spec.count || !vote.count || vote.count > rpm::kVoteValues) { return false; }
@@ -169,6 +179,8 @@ Result start(Controller &controller, const RegisterIo &io, rpm::VoteBank &bank,
         const Result result = domain(controller, offset, true, mmioPolls);
         if (result != Result::Ok) { return fail(controller, result); }
     }
+    const Result retained = retention(controller, true);
+    if (retained != Result::Ok) { return fail(controller, retained); }
     const u32 branches[] = {kAhbClockOffset, kTimerClockOffset, kCoreClockOffset};
     for (u32 offset : branches) {
         const Result result = branch(controller, offset, true, mmioPolls);
@@ -195,6 +207,8 @@ Result stop(Controller &controller, bool consumersQuiescent,
         const Result result = domain(controller, offset, false, mmioPolls);
         if (result != Result::Ok) { return fail(controller, result); }
     }
+    const Result restored = retention(controller, false);
+    if (restored != Result::Ok) { return fail(controller, restored); }
     if (readPower(controller.io, &controller.final) != ProbeResult::DomainOff ||
         ((controller.final.gx | controller.final.cx) & lumia950::kGdscrPowerOn) ||
         ((controller.final.coreClock | controller.final.ahbClock | controller.final.timerClock) & kBranchEnable)) {

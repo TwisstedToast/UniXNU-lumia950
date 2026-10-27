@@ -22,8 +22,8 @@
     "drivers/NativeAdreno418/NativeAdreno418.h": "9e680ebf30db980719b7753a3397a3b0782b5a3483e9890c7b1f5f12a693ddbd",
     "drivers/NativeAdreno418/PlatformCheck.cpp": "8d8b7cb50614a94d6334ff9a2e80d444d121e13cb8bfa9b11f5836f4b88cfcef",
     "drivers/NativeAdreno418/PlatformCheck.h": "97772d68838de3de1f06effe93b48cd9c176ab133c6ad4424f33ee8a3ede711a",
-    "drivers/NativeAdreno418/PowerController.cpp": "0a765622e78e70afa88deecd183d20cedf43992c32de7563eb6b405f546757fb",
-    "drivers/NativeAdreno418/PowerController.h": "2ca96ab937d3f358f6d74112cbb7b605bd0c67ee2d5b8cac4058bda283c6d728",
+    "drivers/NativeAdreno418/PowerController.cpp": "678f9282b562fbaf3483322043b7ba1abc7c622b59c5a7d2f84666ebf795e83f",
+    "drivers/NativeAdreno418/PowerController.h": "e4a860d1c2c04007f82bedb2295e5ae013f2a5e7ff4116834ef19c640cbf7bea",
     "drivers/NativeAdreno418/RpmCore.cpp": "342dad1e35d8a2f37db34c7ebf662af706abfcef993594227d2b9433679f6257",
     "drivers/NativeAdreno418/RpmCore.h": "1777b37f8a2b2cb8299ee5cfc8d1fca336eed044a69d254238ed182494d99d51",
     "drivers/NativeAdreno418/RpmVotes.cpp": "9ce67ad6c7e63efe77dc57258d30d05c96614bbf8b8ca98dc4f231893314f2e8",
@@ -40,7 +40,7 @@
     "drivers/NativeAdreno418/Submission.h": "c5a8fb2e7be8f662540596d3264e6ac0b388159fc5913556719de50aa9cfae7c",
     "drivers/NativeAdreno418/Test/check-adreno-core.cpp": "8109d00fdc5f67eb9b9395702b9cfc8593573c02e546d3228688bb19fdb2c7f5",
     "drivers/NativeAdreno418/Test/check-gpu-backend.cpp": "3a79c9d4773a890e1e370e4269276973f449b3de072b5747445afd1852ac9aae",
-    "drivers/NativeAdreno418/Test/check-gpu-batch.cpp": "0d748363194261da33e450f9fcd2faa331988e50c76f76334e0b21d84c1f2043",
+    "drivers/NativeAdreno418/Test/check-gpu-batch.cpp": "9f733c7c69eba6957b11bb57140f600d89815a09ae11f7485f9ee1e5f6c5b514",
     "drivers/NativeAdreno418/Test/check-rpm-votes.cpp": "549146a61810dcb1bf6b16c715783659b1ce72e1a7293f70fc1b9334b84008d1",
     "drivers/NativeAdreno418/Test/check-rpm.cpp": "a996320f538ac953554048c05084685bccb75b79a921b347835b18d6e4f23da4",
     "drivers/NativeAdreno418/Test/check-smd-memory.cpp": "d0b64954d7e2142bd6b2ac1b10a05a5e582fc5fac6d23522a076ef588066dfe9",
@@ -57,7 +57,7 @@
       "undefined"
     ],
     "integrated_gpu_model": {
-      "checks": 940,
+      "checks": 950,
       "failures": 0
     },
     "leased_rpm_votes": {
@@ -115,8 +115,8 @@
   },
   "arm64_coff_link_check": {
     "filename": "gpu-batch-link-check.efi",
-    "bytes": 48128,
-    "sha256": "9183c06109cefaa91f2858728e490d17ba9a7b407ca25cc84159b9a0dd90a0d0",
+    "bytes": 48640,
+    "sha256": "193fb33c94be86715316bcc14374f68e065b705d5d9d29bac0250b15c739b346",
     "dead_stripping": false,
     "runtime_entry": "existing RPM diagnostic, not GPU batch",
     "installed": false

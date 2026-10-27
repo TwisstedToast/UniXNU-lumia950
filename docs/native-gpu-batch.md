@@ -25,8 +25,10 @@ memory write would be an intermediate milestone, not shader rendering or 60 FPS.
    2048-byte allocation contains **two 1024-byte FIFOs**, not one 2048-byte direction.
 4. Obtain all qualified supply/configuration-bus/memory-bus/graphics votes, in order,
    with correlated ACKs before clearing software collapse or enabling branches.
-5. Bring up the two OxiLi domains and three branches with preserved control bits
-   and bounded polls. Only a cold, software-controlled, exclusively owned GPU qualifies.
+5. Bring up the two OxiLi domains, assert the GX core clock's FF/memory retention
+   bits (14/13), then enable the three branches with preserved control bits and bounded
+   polls. Only a cold, software-controlled, exclusively owned GPU qualifies. Restore
+   the inherited retention bits only after both domains have demonstrably collapsed.
 6. Hold the command processor, power A418 SP/TP with a bounded wait, configure the
    A430-derived VBIF settings, A418 bootstrap workaround and internal clock controls.
    Register protection covers privileged blocks, XPU-sensitive ranges and the SMMU.
@@ -49,8 +51,10 @@ memory write would be an intermediate milestone, not shader rendering or 60 FPS.
 failure pins the caller's resources and preserves the failing stage and component
 results; it does not free uncertain DMA, retry a published RPM transaction or pretend
 that rollback succeeded. Retirement never releases RPM's physical message RAM.
-The caller must serialize the batch and retain every buffer, callback context and
-object until reset or separately verified teardown. There is no asynchronous owner lock.
+The caller must serialize the batch, keep the GPU interrupt controlled at the GIC,
+and retain every buffer, callback context and object until reset or separately verified
+teardown. Post-exit callbacks must not invoke firmware boot services. There is no
+asynchronous owner lock.
 
 ## Leased power votes
 
@@ -112,7 +116,11 @@ milestone. This batch does not fabricate the missing inputs:
 The phone's existing Windows PEP driver was copied from its **read-only** volume for
 local research. Its static table independently confirms `/clk/oxili -> clk2, ID 1`,
 with KHz units. It does not reveal live RPM votes or establish a complete regulator
-sequence. See [the derived PEP observations](hardware/2026-10-27-pep-gpu-reference.json).
+sequence. Its GX callback and lists also independently identify the core-clock
+FF/memory retention masks used here; the callback's original unbounded power wait
+is not reproduced. The native cold shutdown deliberately restores inherited bits
+after verified collapse, rather than claiming to reproduce the Windows clock-policy
+state machine. See [the derived PEP observations](hardware/2026-10-27-pep-gpu-reference.json).
 Vendor binaries and private disassembly/decompilation outputs are not committed.
 
 After an actual completed command, shader/texture submission, render-target ownership,
