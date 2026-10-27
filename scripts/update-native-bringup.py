@@ -40,38 +40,44 @@ def installed_state(args, previous):
         destination = INSTALL.phone_file(name)
         if destination.is_symlink() or destination.read_bytes() != data:
             raise ValueError(f"installed stage differs from the supplied previous stage: {name}")
-    expected = {name.casefold() for name in previous if name.startswith("EFI/UniXNU/")}
-    actual = set()
-    for directory, directories, filenames in os.walk(INSTALL.PHONE / "EFI/UniXNU", followlinks=False):
-        directories[:] = [name for name in directories if not metadata(name)]
-        for name in directories + filenames:
-            source = Path(directory) / name
-            if source.is_symlink():
-                raise ValueError("unexpected phone symlink; no update")
-        for name in filenames:
-            if not metadata(name):
-                actual.add((Path(directory) / name).relative_to(INSTALL.PHONE).as_posix().casefold())
-    if actual != expected:
-        raise ValueError("unexpected existing native tree file set; no update")
+    expected = {}
+    for name in previous:
+        path = Path(name)
+        if not name.startswith("EFI/UniXNU/"):
+            continue
+        for index in range(2, len(path.parts)):
+            parent = Path(*path.parts[:index]).as_posix()
+            expected.setdefault(parent, set()).add(path.parts[index].casefold())
+    for parent, names in expected.items():
+        actual = {name.casefold() for name in os.listdir(INSTALL.PHONE / parent) if not metadata(name)}
+        if actual != names:
+            raise ValueError("unexpected existing native tree file set; no update")
     return volume, whole
 
 
-def snapshot():
+def snapshot(args, previous):
+    original = json.loads(args.original_inventory.read_text())
+    summary = original.get("summary", {})
+    inventory = original.get("files", {})
+    if summary.get("volume_uuid") != args.volume_uuid or summary.get("partition_uuid") != args.partition_uuid or \
+        not isinstance(inventory, dict) or not inventory or len(inventory) > 512:
+        raise ValueError("original backup inventory does not identify this Lumia")
+    required = {name.casefold() for name in INSTALL.CRITICAL} | {ROOT_FLAG.casefold()}
+    if not required.issubset({name.casefold() for name in inventory}):
+        raise ValueError("original backup inventory lacks critical boot files")
+    names = {}
+    for name in list(inventory) + list(previous):
+        path = Path(name)
+        if path.is_absolute() or ".." in path.parts or "\\" in name or not path.parts:
+            raise ValueError("invalid original backup inventory path")
+        names.setdefault(name.casefold(), name)
     result = {ROOT_FLAG: (INSTALL.PHONE / ROOT_FLAG).read_bytes()}
     excluded = []
-    for directory, directories, filenames in os.walk(INSTALL.PHONE, followlinks=False):
-        for name in directories + filenames:
-            source = Path(directory) / name
-            if metadata(name):
-                excluded.append(source.relative_to(INSTALL.PHONE).as_posix())
-            elif source.is_symlink():
-                raise ValueError("unexpected phone symlink; no update")
-        directories[:] = [name for name in directories if not metadata(name)]
-        for name in sorted(filenames):
-            source = Path(directory) / name
-            relative = source.relative_to(INSTALL.PHONE).as_posix()
-            if not metadata(name) and relative != ROOT_FLAG:
-                result[relative] = source.read_bytes()
+    for name in names.values():
+        if any(metadata(part) for part in Path(name).parts):
+            excluded.append(name)
+        elif name != ROOT_FLAG:
+            result[name] = INSTALL.phone_file(name).read_bytes()
     return result, sorted(excluded)
 
 
@@ -93,7 +99,7 @@ def update(args):
         "volume_uuid": volume["VolumeUUID"], "partition_uuid": volume["DiskUUID"],
         "changed_files": sorted(changed), "free_bytes": volume["FreeSpace"],
         "non_atomic_kernel_replacement_after_backup": release_kernel,
-        "verification_scope": "all nonmetadata files; macOS sidecars/cache are neither opened nor modified",
+        "verification_scope": "known nonmetadata files from the original backup inventory and previous native stage; no FAT tree walk",
         "boot_chain_replaced": False}
     if not args.apply:
         print(json.dumps(summary, indent=2))
@@ -102,7 +108,7 @@ def update(args):
     if not backup_root.is_relative_to(INSTALL.BACKUP_VOLUME.resolve()) or \
         INSTALL.disk_info(INSTALL.BACKUP_VOLUME)["ParentWholeDisk"] == whole["DeviceIdentifier"]:
         raise ValueError("verified backup must go to the separate bludssd volume")
-    baseline, excluded = snapshot()
+    baseline, excluded = snapshot(args, previous)
     summary["excluded_metadata_paths"] = excluded
     archived = io.BytesIO()
     with tarfile.open(fileobj=archived, mode="w") as archive:
@@ -128,7 +134,7 @@ def update(args):
         raise ValueError("fallback backup changed; phone remains untouched")
     installed_state(args, previous)
     for name, data in baseline.items():
-        if (INSTALL.PHONE / name).read_bytes() != data:
+        if INSTALL.phone_file(name).read_bytes() != data:
             raise ValueError(f"phone file changed during backup: {name}; phone remains untouched")
     if release_kernel:
         INSTALL.phone_file(KERNEL).unlink()
@@ -141,10 +147,10 @@ def update(args):
             raise ValueError(f"updated payload readback mismatch: {name}; backup is {backup}")
     overwritten = {name.casefold() for name in changed}
     for name, data in baseline.items():
-        if name.casefold() not in overwritten and (INSTALL.PHONE / name).read_bytes() != data:
+        if name.casefold() not in overwritten and INSTALL.phone_file(name).read_bytes() != data:
             raise ValueError(f"untouched phone file changed: {name}; backup is {backup}")
     summary.update(backup=str(backup), verified_nonmetadata_files=len(baseline),
-        original_other_nonmetadata_files_preserved=True)
+        original_other_known_nonmetadata_files_preserved=True)
     INSTALL.write_verified(backup / "updated.json", (json.dumps(summary, indent=2) + "\n").encode())
     print(json.dumps(summary, indent=2))
     print("Verified experimental payload update only. BCD, BootShim, UEFI and fallback preserved. Disk remains mounted.")
@@ -154,6 +160,8 @@ def main():
     parser = argparse.ArgumentParser(description="Update an exactly verified existing native stage; dry-run unless --apply")
     parser.add_argument("--stage", required=True, type=Path)
     parser.add_argument("--previous-stage", required=True, type=Path)
+    parser.add_argument("--original-inventory", required=True, type=Path,
+        help="before.json from the verified original EFIESP archive; avoids macOS FAT directory-walk aliases")
     parser.add_argument("--volume-uuid", required=True)
     parser.add_argument("--partition-uuid", required=True)
     parser.add_argument("--backup-root", type=Path, default=Path("/Volumes/bludssd/Lumia950-backups"))

@@ -40,9 +40,16 @@ not an arbitrary existing EFI directory. Both stages must pass the same hashes,
 source-kernel integrity checks and explicit-choice menu contract. Only the
 experimental GPU image, kernel, ADT and manifest may change; loader, fallback,
 BCD, BootShim and firmware must remain byte-identical. The existing USB root flag
-is checked first. The update archives and verifies all nonmetadata files on the
-separate SSD, deliberately never opening macOS AppleDouble/cache files after the
-observed FAT vnode aliasing issue. Its report explicitly names that scope.
+is checked first. The update archives and verifies the **known nonmetadata files**
+from the original verified backup inventory plus the existing native stage on the
+separate SSD. It requires that original `before.json` as `--original-inventory`,
+checks its device identity and rejects escaping paths. It never walks/stats the
+FAT tree or opens AppleDouble/cache files: macOS enumeration caused unrelated
+files to be cached as directories even when their bytes verified on a cold mount.
+It checks the native tree's fixed directory names without statting their metadata
+entries. Unknown non-native additions are not represented as archived/verified;
+the report explicitly names its known-file scope. The charging log can legitimately
+change between boots; the update backs up its current bytes, not a stale log.
 With less than one spare kernel's worth of space, only the backed-up experimental
 kernel is removed before replacement. This part is not atomic: interruption can
 leave that experimental entry unavailable, while the unchanged menu's default

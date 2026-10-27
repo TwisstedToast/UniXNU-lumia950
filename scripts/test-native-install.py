@@ -168,6 +168,7 @@ class NativeInstallTests(unittest.TestCase):
     def prepare_update(self):
         (self.phone / UPDATE.ROOT_FLAG).write_bytes(b"USB\r\n")
         self.run_install()
+        self.args.original_inventory = next(self.args.backup_root.iterdir()) / "before.json"
         self.args.previous_stage = self.root / "previous-stage"
         shutil.copytree(self.stage, self.args.previous_stage)
         self.before_update = self.contents(self.phone)
@@ -193,7 +194,7 @@ class NativeInstallTests(unittest.TestCase):
             if name not in UPDATE.UPDATABLE:
                 self.assertEqual((self.phone / name).read_bytes(), data)
         self.assertEqual((self.phone / UPDATE.KERNEL).read_bytes(), (self.stage / UPDATE.KERNEL).read_bytes())
-        self.assertTrue(json.loads((backup / "updated.json").read_text())["original_other_nonmetadata_files_preserved"])
+        self.assertTrue(json.loads((backup / "updated.json").read_text())["original_other_known_nonmetadata_files_preserved"])
 
     def test_update_dry_run_and_changed_previous_payload_never_write(self):
         self.prepare_update()
@@ -227,6 +228,9 @@ class NativeInstallTests(unittest.TestCase):
         self.prepare_update()
         sidecar = self.phone / "EFI/._UniXNU"
         sidecar.write_bytes(b"metadata alias must never be opened")
+        inventory = json.loads(self.args.original_inventory.read_text())
+        inventory["files"]["EFI/._UniXNU"] = {"bytes": sidecar.stat().st_size, "sha256": INSTALL.digest(sidecar.read_bytes())}
+        self.args.original_inventory.write_text(json.dumps(inventory))
         original_reader = Path.read_bytes
 
         def refuse_metadata(source):
@@ -234,7 +238,8 @@ class NativeInstallTests(unittest.TestCase):
                 raise AssertionError("opened a macOS metadata sidecar")
             return original_reader(source)
 
-        with patch.object(Path, "read_bytes", refuse_metadata):
+        with patch.object(Path, "read_bytes", refuse_metadata), \
+            patch.object(UPDATE.os, "walk", side_effect=AssertionError("must not walk the FAT directory tree")):
             self.run_update()
         backup = next(self.args.backup_root.glob("native-update-*"))
         with tarfile.open(backup / "EFIESP.tar", "r:") as archive:
@@ -277,6 +282,21 @@ class NativeInstallTests(unittest.TestCase):
         (self.phone / UPDATE.ROOT_FLAG).write_bytes(b"USB\r\n")
         self.volume["FreeSpace"] = 1024
         with self.assertRaisesRegex(ValueError, "not enough EFIESP"):
+            self.run_update()
+        self.assertEqual(self.contents(self.phone), self.before_update)
+
+    def test_update_rejects_foreign_or_escaping_original_inventory(self):
+        self.prepare_update()
+        original = json.loads(self.args.original_inventory.read_text())
+        foreign = json.loads(json.dumps(original))
+        foreign["summary"]["volume_uuid"] = "another-phone"
+        self.args.original_inventory.write_text(json.dumps(foreign))
+        with self.assertRaisesRegex(ValueError, "does not identify this Lumia"):
+            self.run_update()
+        escaping = json.loads(json.dumps(original))
+        escaping["files"]["../../outside-device"] = {"sha256": "unused", "bytes": 1}
+        self.args.original_inventory.write_text(json.dumps(escaping))
+        with self.assertRaisesRegex(ValueError, "invalid original backup inventory path"):
             self.run_update()
         self.assertEqual(self.contents(self.phone), self.before_update)
 
