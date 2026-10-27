@@ -1,0 +1,62 @@
+name: Windows GPU baseline
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - tools/gpu-demo/**
+      - scripts/build-windows-gpu-demo.py
+      - scripts/test-gpu-demo.sh
+      - .github/workflows/gpu-demo.yml
+  pull_request:
+    paths:
+      - tools/gpu-demo/**
+      - scripts/build-windows-gpu-demo.py
+      - scripts/test-gpu-demo.sh
+      - .github/workflows/gpu-demo.yml
+
+permissions:
+  contents: read
+
+jobs:
+  timing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/test-gpu-demo.sh
+
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build ARM64 application
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" amd64_arm64
+          python scripts/build-windows-gpu-demo.py --compiler msvc --arch arm64 --out out/gpu-demo-arm64
+      - name: Build x64 shader checker
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" amd64
+          python scripts/build-windows-gpu-demo.py --compiler msvc --arch x64 --out out/gpu-demo-x64
+      - name: Compile actual shaders without claiming GPU execution
+        shell: pwsh
+        run: |
+          $process = Start-Process -FilePath out/gpu-demo-x64/LumiaGpuDemo.exe -ArgumentList '--shader-check' -Wait -PassThru
+          Get-ChildItem out/gpu-demo-x64/LumiaGpuDemo-*/report.txt | Get-Content
+          if ($process.ExitCode -ne 0) { throw "HLSL validation failed: $($process.ExitCode)" }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lumia950-windows-gpu-baseline
+          path: |
+            out/gpu-demo-arm64/LumiaGpuDemo.exe
+            out/gpu-demo-arm64/README.txt
+            out/gpu-demo-arm64/build.json
+            out/gpu-demo-x64/LumiaGpuDemo-*/report.txt
