@@ -49,3 +49,8 @@ done
   "$ROOT/drivers/NativeAdreno418/RpmCore.cpp" "$ROOT/drivers/NativeAdreno418/PinnedGraphics.cpp" \
   "$ROOT/drivers/NativeAdreno418/Test/check-spmi.cpp" -o "$OUT/check-spmi"
 "$OUT/check-spmi"
+"$CXX" -std=c++17 -Wall -Wextra -Werror -Wconversion -Wsign-conversion -fsanitize=address,undefined \
+  -I "$ROOT/drivers/NativeAdreno418" "$ROOT/drivers/NativeAdreno418/GpuIo.cpp" \
+  "$ROOT/drivers/NativeAdreno418/SecureSmmu.cpp" \
+  "$ROOT/drivers/NativeAdreno418/Test/check-secure-smmu.cpp" -o "$OUT/check-secure-smmu"
+"$OUT/check-secure-smmu" "$ROOT/drivers/NativeAdreno418/Test/secure-smmu-profile.hex"

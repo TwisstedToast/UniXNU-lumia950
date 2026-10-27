@@ -20,7 +20,7 @@ void expect(bool condition, const char *message)
 
 enum class Fault {
     None, SmemTranslation, PeerSilent, AckLost, AckMalformed, AckError, AckStale,
-    GxOn, BranchOn, SpTpOn, Protection, RouteBypass, RouteAlias, ContextEnabled,
+    GxOn, BranchOn, SpTpOn, Protection, SmmuGlobalAbort, RouteBypass, RouteAlias, ContextEnabled,
     ContextReadback, TlbBusy, AtsFault, AtsWrongPhysical, SecondContextAts,
     CpStall, BadFence, CorruptFill, DestinationGuard, FenceGuard, HaltBusy,
     DisableContext, SpTpOff, GxOff, ReleaseAckLost, CloseSilent, Retirement, AtsWriteFault, Retention
@@ -244,6 +244,9 @@ struct Device {
         if (!value || (offset & 3) || offset >= 0x10000) { return false; }
         if (space == RegisterSpace::Mmss) { *value = device.mmss[offset / 4]; return true; }
         if (!device.powered()) { device.violation = true; return false; }
+        if (space == RegisterSpace::Smmu && device.fault == Fault::SmmuGlobalAbort && offset == 0x20) {
+            return false;
+        }
         if (space == RegisterSpace::Gpu) {
             ++device.gpuReads;
             *value = device.gpu[offset / 4];
@@ -600,6 +603,7 @@ void testFailures()
         {Fault::GxOn, BatchStage::Powering}, {Fault::BranchOn, BatchStage::Powering},
         {Fault::Retention, BatchStage::Powering},
         {Fault::SpTpOn, BatchStage::Initializing}, {Fault::Protection, BatchStage::Initializing},
+        {Fault::SmmuGlobalAbort, BatchStage::Routing},
         {Fault::RouteBypass, BatchStage::Routing}, {Fault::RouteAlias, BatchStage::Routing},
         {Fault::ContextEnabled, BatchStage::Routing}, {Fault::ContextReadback, BatchStage::Binding},
         {Fault::TlbBusy, BatchStage::Binding}, {Fault::AtsFault, BatchStage::Translating},
@@ -634,6 +638,11 @@ void testFailures()
         if (test.stage <= BatchStage::Translating) {
             expect(device->submissions == 0 && device->meWords == 0 && device->pfpWords == 0,
                 "unqualified stream routes or failed translations never start microcode or DMA");
+        }
+        if (test.fault == Fault::SmmuGlobalAbort) {
+            expect(device->batch.hardware.state == HardwareState::Ready &&
+                device->batch.routeResult == smmu::RouteResult::IoError && !device->batch.routes.qualified,
+                "handset-style global ID read abort preserves hardware success but never qualifies GPU DMA");
         }
         if (test.fault == Fault::AckLost || test.fault == Fault::AckMalformed || test.fault == Fault::AckStale) {
             expect(device->requestIds.size() == 1 && device->writes == 0 && device->batch.votes.state == rpm::VoteState::Poisoned,

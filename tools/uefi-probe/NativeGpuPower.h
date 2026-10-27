@@ -35,7 +35,11 @@ bool NativeGpuAddress(NativeGpuContext &context, RegisterSpace space, u32 offset
     if (space == RegisterSpace::Mmss) { address = lumia950::kMmssPhys + offset; return true; }
     if (!context.gpuAccessible) { return false; }
     if (space == RegisterSpace::Gpu) { address = lumia950::kGpuPhys + offset; return true; }
-    if (space == RegisterSpace::Smmu) { address = lumia950::kGpuSmmuPhys + offset; return true; }
+    if (space == RegisterSpace::Smmu && offset >= secure::kContextOffset &&
+        offset < secure::kContextOffset + secure::kContextCount * 4096) {
+        address = lumia950::kGpuSmmuPhys + offset;
+        return true;
+    }
     return false;
 }
 
@@ -49,7 +53,8 @@ bool NativeGpuRead(void *opaque, RegisterSpace space, u32 offset, u32 *value)
 bool NativeGpuWrite(void *opaque, RegisterSpace space, u32 offset, u32 value)
 {
     u64 address = 0;
-    return opaque && NativeGpuAddress(*static_cast<NativeGpuContext *>(opaque), space, offset, address) &&
+    return space != RegisterSpace::Smmu && opaque &&
+        NativeGpuAddress(*static_cast<NativeGpuContext *>(opaque), space, offset, address) &&
         NativeWrite(nullptr, address, value);
 }
 
@@ -78,8 +83,10 @@ struct NativeGpuResult {
     ProbeResult identity;
     CommandHardware hardware;
     HardwareResult hardwareResult;
-    smmu::Routes routes;
-    smmu::RouteResult routeResult;
+    secure::Configuration configuration;
+    secure::Result secureResult;
+    secure::Contexts contexts;
+    secure::Result contextResult;
     bool complete;
 };
 
@@ -103,7 +110,9 @@ void NativeGpuProgress(const ProbeFramebuffer &framebuffer, const char *stage)
     const RegisterIo registers = {&context, NativeGpuRead, NativeGpuWrite, NativeGpuBarrier, Delay};
     readPower(registers, &observed);
     ProbeFillRectangle(&framebuffer, 0, 0, framebuffer.width, framebuffer.height, 0);
-    Line(framebuffer, 0, result.complete ? "NATIVE GPU HARDWARE INITIALIZED" : "NATIVE GPU ACTIVATION STOPPED", color);
+    const char *heading = result.complete ? "NATIVE GPU + SMMU CONTEXT ACCESS OK" :
+        result.hardwareResult == HardwareResult::Ok ? "GPU INITIALIZED - SMMU BLOCKED" : "NATIVE GPU ACTIVATION STOPPED";
+    Line(framebuffer, 0, heading, color);
     Line(framebuffer, 1, "NO WINDOWS OR UEFI SERVICES", color);
     Line(framebuffer, 2, nativeGpuStage, color);
     Line(framebuffer, 3, spmi::resultName(handoff.supply), color);
@@ -123,12 +132,11 @@ void NativeGpuProgress(const ProbeFramebuffer &framebuffer, const char *stage)
     Number(framebuffer, 17, "HW INIT", static_cast<u32>(result.hardwareResult), color);
     Number(framebuffer, 18, "HW INDEX", result.hardware.lastIndex, color);
     Number(framebuffer, 19, "HW VALUE", result.hardware.lastValue, color);
-    Number(framebuffer, 20, "SMMU ROUTES", static_cast<u32>(result.routeResult), color);
-    for (u32 index = 0; index < 3; ++index) {
-        const char *labels[] = {"SMMU IDR0", "SMMU IDR1", "SMMU IDR2"};
-        Number(framebuffer, 21 + index, labels[index], result.routes.id[index], color);
-    }
-    Number(framebuffer, 24, "SMMU CR0", result.routes.control, color);
+    Number(framebuffer, 20, "SCM RESULT", static_cast<u32>(result.secureResult), color);
+    Number(framebuffer, 21, "SCM AVAILABLE", result.configuration.availability, color);
+    Number(framebuffer, 22, "SCM MONITOR", result.configuration.returned.values[0], color);
+    Number(framebuffer, 23, "SCM SERVICE", result.configuration.returned.values[1], color);
+    Number(framebuffer, 24, "SCM RESUMES", result.configuration.resumes, color);
     Number(framebuffer, 25, "PMIC TYPE/SUB", (static_cast<u32>(handoff.inherited.type) << 8) |
         handoff.inherited.subtype, color);
     const spmi::RailSnapshot rails[] = {handoff.rail.initial, handoff.rail.final};
@@ -140,15 +148,17 @@ void NativeGpuProgress(const ProbeFramebuffer &framebuffer, const char *stage)
     }
     Number(framebuffer, 28, "RAIL IN STATUS", handoff.rail.initial.status, color);
     Number(framebuffer, 29, "RAIL OUT STATUS", handoff.rail.final.status, color);
-    const char *streamLabels[] = {"SMMU SMR0", "SMMU SMR1", "SMMU SMR2", "SMMU SMR3"};
-    const char *mappingLabels[] = {"SMMU S2CR0", "SMMU S2CR1", "SMMU S2CR2", "SMMU S2CR3"};
-    for (u32 index = 0; index < 4; ++index) {
-        Number(framebuffer, 30 + 2 * index, streamLabels[index], result.routes.match[index], color);
-        Number(framebuffer, 31 + 2 * index, mappingLabels[index], result.routes.mapping[index], color);
-    }
-    Number(framebuffer, 38, "SMMU CBAR0", result.routes.attributes[0], color);
-    Number(framebuffer, 39, "SMMU CBAR1", result.routes.attributes[1], color);
-    Number(framebuffer, 40, "SMMU STREAMS", result.routes.count, color);
+    Number(framebuffer, 30, "CB0 SCTLR", result.contexts.banks[0].control, color);
+    Number(framebuffer, 31, "CB1 SCTLR", result.contexts.banks[1].control, color);
+    Number(framebuffer, 32, "CB0 FSR", result.contexts.banks[0].fault, color);
+    Number(framebuffer, 33, "CB1 FSR", result.contexts.banks[1].fault, color);
+    Number(framebuffer, 34, "CB0 TTBR0 LO", result.contexts.banks[0].tableBase[0], color);
+    Number(framebuffer, 35, "CB1 TTBR0 LO", result.contexts.banks[1].tableBase[0], color);
+    Number(framebuffer, 36, "CB0 READ MASK", result.contexts.banks[0].validFields, color);
+    Number(framebuffer, 37, "CB1 READ MASK", result.contexts.banks[1].validFields, color);
+    Number(framebuffer, 38, "SMMU LAST OFF", result.contexts.lastOffset, color);
+    Number(framebuffer, 39, "SMMU READS", result.contexts.successfulReads, color);
+    Number(framebuffer, 40, "CONTEXT RESULT", static_cast<u32>(result.contextResult), color);
     Number(framebuffer, 41, "ABORT ESR", native_mmio_esr, color);
     Number(framebuffer, 42, "ABORT FAR", native_mmio_far, color);
     Number(framebuffer, 43, "ABORT ELR", native_mmio_elr, color);
@@ -170,7 +180,8 @@ void NativeGpuProgress(const ProbeFramebuffer &framebuffer, const char *stage)
     result.handoff.clock = rpm::Result::NotReady;
     result.powerResult = power::Result::NotReady;
     result.hardwareResult = HardwareResult::NotReady;
-    result.routeResult = smmu::RouteResult::NotReady;
+    result.secureResult = secure::Result::NotReady;
+    result.contextResult = secure::Result::NotReady;
     NativeGpuContext context = {};
     const RegisterIo registers = {&context, NativeGpuRead, NativeGpuWrite, NativeGpuBarrier, Delay};
     NativeGpuProgress(framebuffer, "CHECKING COLD GRAPHICS DOMAINS");
@@ -214,8 +225,15 @@ void NativeGpuProgress(const ProbeFramebuffer &framebuffer, const char *stage)
     NativeGpuProgress(framebuffer, "VERIFYING SUPPLY AFTER HARDWARE INIT");
     result.handoff.supply = spmi::recheckGraphicsRail(result.bus, result.handoff.rail, 10000);
     if (result.handoff.supply != spmi::Result::Ok) { NativeGpuResultScreen(framebuffer, result); }
-    NativeGpuProgress(framebuffer, "INSPECTING INHERITED SMMU ROUTES");
-    result.routeResult = smmu::inspectRoutes(result.routes, registers, {true, true, true});
-    result.complete = true;
+    NativeGpuProgress(framebuffer, "RESTORING OEM SECURE SMMU POLICY");
+    const secure::MonitorIo monitor = {nullptr, [](void *, secure::MonitorRegisters *values) {
+        return NativeGuardedScmCall(values);
+    }};
+    result.secureResult = secure::restoreGraphicsConfiguration(result.configuration, monitor,
+        {true, true, true, nativeSmmuProfile, true}, 64);
+    if (result.secureResult != secure::Result::Ok) { NativeGpuResultScreen(framebuffer, result); }
+    NativeGpuProgress(framebuffer, "READING NONSECURE GPU CONTEXT BANKS");
+    result.contextResult = secure::inspectGraphicsContexts(result.contexts, registers, result.configuration);
+    result.complete = result.contextResult == secure::Result::Ok;
     NativeGpuResultScreen(framebuffer, result);
 }

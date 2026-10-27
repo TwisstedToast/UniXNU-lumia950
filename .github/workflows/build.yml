@@ -124,6 +124,7 @@ jobs:
             curl -fsSL "$source/AcpiTables/8992/src/$table" -o "work/graphics-reference/AcpiTables/8992/src/$table"
           done
           python3 scripts/check-graphics-profile.py --firmware-root work/graphics-reference
+          python3 scripts/check-secure-smmu-profile.py --firmware-root work/graphics-reference
 
       - name: The 16.x patch line has no holes
         # feeds.toml moves the build to xnu-8796.141.3, and UniXNU carries that line's patch

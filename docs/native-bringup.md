@@ -169,6 +169,46 @@ are discrete samples, not independent analog measurements or continuous ownershi
 proof. Labels fit their value columns. Unreached fields
 remain zero and are not represented as successful hardware reads.
 
+### Handset GPU initialization and secure SMMU follow-up
+
+The v4 photograph in `docs/hardware/2026-10-27-native-gpu-initialized-v4.json`
+confirms successful native power startup and command-register initialization:
+`GPU VERSION=0x51`, configuration `0x0229249a`, power/init results zero, and
+66 qualifying supply observations at selector-derived 820000–830000 microvolts.
+The requested 300 MHz is not a frequency measurement. Initialization does not
+qualify voltage margin for a workload. The first global SMMU read then raised a
+recoverable external data abort: ESR `0x96000010`, FAR `0xfdb10020`, route result
+`4` (I/O error). The zero SMMU fields were unvisited, not actual readbacks.
+
+Matching ACPI marks `MMU3.XPUE=1`. Static analysis of the handset's backed-up
+`qcsmmu8994.sys` finds a separate secure setup path, which avoids those global
+ID reads. Its GUID mapper selects device **18**, not another platform's GPU
+device ID, and submits restore function `0x02000c02` with arguments `(18, 0)`.
+The matching `qcscm8994.sys` uses the SMC32 SiP convention. This makes protected
+global access a supported explanation of the fault, not a proven exclusive
+electrical/interconnect cause or a guaranteed fix. Addresses, binary hashes,
+ACPI metadata and access restrictions are recorded in
+`docs/hardware/2026-10-27-secure-gpu-smmu-profile.json`.
+
+V5 recognizes one exact 221-byte MMU3 declaration in a checksummed DSDT before
+hardware exit. This intentionally narrow byte recognizer is not a general AML
+interpreter or a security boundary against modified firmware. Different AML
+encodings stop before secure calls or hardware changes. The small independent
+IASL fixture was compiled from the isolated unmodified MMU3 declaration; full
+DSDT recompilation failed on unrelated existing source errors and is not claimed.
+
+After the existing GPU startup, explicit confirmation also selects an experimental
+native secure-monitor restore. It first checks availability, requires zero monitor
+and service results, permits only bounded interrupted-call resumes with the A6
+cookie, and never guesses another ABI or retries a busy/error response. A monitor
+call that never returns cannot be cancelled by that budget. The native bridge
+refuses every global SMMU address and every direct SMMU write. Only context banks
+0 and 1 are inspected; bank 2, global routes and security registers remain untouched.
+Valid-field masks distinguish real zero values from missing reads. Existing enabled
+contexts or faults remain unchanged and stop qualification. Partial GPU success is
+shown separately from SMMU failure. This establishes no global-route readback,
+page-table mapping, command execution, DMA, rendered frame or measured FPS.
+
 The rail mapping comes from the [Lumia board description](https://github.com/torvalds/linux/blob/v6.12/arch/arm64/boot/dts/qcom/msm8994-msft-lumia-octagon.dtsi),
 [PMI8994 SPMI description](https://github.com/torvalds/linux/blob/v6.12/arch/arm64/boot/dts/qcom/pmi8994.dtsi)
 and [regulator definitions](https://github.com/torvalds/linux/blob/v6.12/drivers/regulator/qcom_spmi-regulator.c).

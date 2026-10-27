@@ -16,9 +16,10 @@
 #include "PowerController.h"
 #include "SpmiCore.h"
 #include "PinnedGraphics.h"
-#include "SmmuRoutes.h"
+#include "SecureSmmu.h"
 extern "C" bool NativeGuardedRead(UINT64, UINT32 *);
 extern "C" bool NativeGuardedWrite(UINT64, UINT32);
+extern "C" bool NativeGuardedScmCall(adreno::secure::MonitorRegisters *);
 extern "C" UINT64 NativeInstallVectors();
 extern "C" volatile UINT64 native_mmio_esr, native_mmio_far, native_mmio_elr;
 #endif
@@ -43,6 +44,7 @@ UINT64 timerFrequency;
 bool nativeVectorsActive;
 ProbeFramebuffer nativeFramebuffer;
 const char *nativeGpuStage;
+bool nativeSmmuProfile;
 #endif
 
 void Print(const char *text)
@@ -88,7 +90,7 @@ bool Checksum(const UINT8 *bytes, UINTN count)
     return sum == 0;
 }
 
-bool LumiaPlatform()
+const UINT8 *AcpiTable(UINT32 signature)
 {
     const EFI_GUID expected = EFI_ACPI_20_TABLE_GUID;
     for (UINTN index = 0; index < firmware->NumberOfTableEntries; ++index) {
@@ -101,25 +103,65 @@ bool LumiaPlatform()
         }
         if (!matches || !entry.VendorTable) { continue; }
         const UINT8 *rsdp = static_cast<const UINT8 *>(entry.VendorTable);
-        if (Read64(rsdp) != 0x2052545020445352ull || rsdp[15] < 2 || !Checksum(rsdp, 20)) { return false; }
+        if (Read64(rsdp) != 0x2052545020445352ull || rsdp[15] < 2 || !Checksum(rsdp, 20)) { return nullptr; }
         const UINT32 length = Read32(rsdp + 20);
-        if (length < 36 || length > 4096 || !Checksum(rsdp, length)) { return false; }
+        if (length < 36 || length > 4096 || !Checksum(rsdp, length)) { return nullptr; }
         const UINT64 address = Read64(rsdp + 24);
-        if (!address || (address & 3)) { return false; }
+        if (!address || (address & 3)) { return nullptr; }
         const UINT8 *xsdt = reinterpret_cast<const UINT8 *>(address);
         const UINT32 size = Read32(xsdt + 4);
         if (Read32(xsdt) != 0x54445358 || size < 36 || size > 65536 ||
-            (size - 36) % 8 || !Checksum(xsdt, size)) { return false; }
+            (size - 36) % 8 || !Checksum(xsdt, size)) { return nullptr; }
         for (UINT32 offset = 36; offset < size; offset += 8) {
             const UINT64 tableAddress = Read64(xsdt + offset);
             if (!tableAddress || (tableAddress & 3)) { continue; }
             const UINT8 *table = reinterpret_cast<const UINT8 *>(tableAddress);
-            if (Read32(table) == 0x43495041) { return isLumia950Madt(table, Read32(table + 4)); }
+            if (Read32(table) != signature) { continue; }
+            const UINT32 tableBytes = Read32(table + 4);
+            if (tableBytes < 36 || tableBytes > 1024 * 1024 || !Checksum(table, tableBytes)) { return nullptr; }
+            return table;
         }
-        return false;
+        return nullptr;
     }
-    return false;
+    return nullptr;
 }
+
+bool LumiaPlatform()
+{
+    const UINT8 *madt = AcpiTable(0x43495041);
+    return madt && isLumia950Madt(madt, Read32(madt + 4));
+}
+
+#ifdef LUMIA_GPU_POWER_TEST
+bool LumiaSmmuProfile()
+{
+    const UINT8 *fadt = AcpiTable(0x50434146);
+    if (!fadt || Read32(fadt + 4) < 44) { return false; }
+    UINT64 address = Read32(fadt + 40);
+    if (Read32(fadt + 4) >= 148 && Read64(fadt + 140)) { address = Read64(fadt + 140); }
+    if (!address || (address & 3)) { return false; }
+    const UINT8 *dsdt = reinterpret_cast<const UINT8 *>(address);
+    const UINT32 bytes = Read32(dsdt + 4);
+    const bool qualified = secure::isLumiaSmmuProfile(dsdt, bytes);
+    PrintHex("SMMU_DSDT_BYTES", bytes);
+    if (!qualified && bytes >= 36 && bytes <= 1024 * 1024 && Checksum(dsdt, bytes)) {
+        for (UINT32 offset = 36; offset + 4 <= bytes; ++offset) {
+            if (Read32(dsdt + offset) != 0x33554d4d) { continue; }
+            const UINT32 start = offset >= 42 ? offset - 6 : 36;
+            const UINT32 count = bytes - start < 256 ? bytes - start : 256;
+            PrintHex("SMMU_FIRST_MMU3_CANDIDATE", start);
+            Print("SMMU_AML_CANDIDATE_HEX=");
+            for (UINT32 index = 0; index < count; ++index) {
+                char digits[3];
+                if (ProbeFormatUnsigned(dsdt[start + index], 16, 2, digits, sizeof(digits))) { Print(digits); }
+            }
+            Print("\r\n");
+            break;
+        }
+    }
+    return qualified;
+}
+#endif
 
 bool Translate(void *, u64 address, bool writing, u64 *par)
 {
@@ -378,7 +420,7 @@ static EFI_STATUS Run(EFI_HANDLE image, EFI_SYSTEM_TABLE *systemTable)
     preflightStage = "PLATFORM";
     firmware->ConOut->ClearScreen(firmware->ConOut);
 #ifdef LUMIA_GPU_POWER_TEST
-    Print("LUMIA 950 | NATIVE GPU POWER v4\r\n");
+    Print("LUMIA 950 | NATIVE GPU POWER v5\r\n");
     Print("Post-EBS PMI8994 supply, dedicated clock, GPU power and hardware setup.\r\n");
     Print("No Windows. No shared-bus RPM changes. No DMA, rendered frame or iOS claim.\r\n");
 #else
@@ -393,6 +435,17 @@ static EFI_STATUS Run(EFI_HANDLE image, EFI_SYSTEM_TABLE *systemTable)
         Print("Returning to firmware.\r\n");
         return status;
     }
+#ifdef LUMIA_GPU_POWER_TEST
+    preflightStage = "SMMU_ACPI_PROFILE";
+    nativeSmmuProfile = LumiaSmmuProfile();
+    if (!nativeSmmuProfile) {
+        Print("SMMU_PROFILE_UNSUPPORTED: no secure calls or hardware changes.\r\n");
+        return EFI_UNSUPPORTED;
+    }
+    Print("SMMU_PROFILE=EXACT_MMU3_XPUE1\r\n");
+    Print("Experimental native SMC32: query availability, restore GPU SMMU device 18 only.\r\n");
+    Print("Protected global ID/route registers are NOT probed. Context banks are read-only.\r\n");
+#endif
     preflightStage = "CPU_CONTEXT";
     UINT64 currentEl, control, affinity, identity;
     asm volatile("mrs %0, currentel\nmrs %1, sctlr_el1\nmrs %2, cntfrq_el0\nmrs %3, mpidr_el1\nmrs %4, midr_el1"

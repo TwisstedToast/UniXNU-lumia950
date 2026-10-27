@@ -147,10 +147,10 @@ def main() -> None:
         "rpm": ["LUMIA 950 | NATIVE RPM HANDOFF v3",
                 "PLATFORM_UNSUPPORTED: no SMEM, translation or MMIO access.",
                 "RPM HANDOFF REFUSED - firmware retained.", "Returning to firmware."],
-        "native-gpu": ["LUMIA 950 | NATIVE GPU POWER v4",
+        "native-gpu": ["LUMIA 950 | NATIVE GPU POWER v5",
                        "PLATFORM_UNSUPPORTED: no SMEM, translation or MMIO access.",
                        "RPM HANDOFF REFUSED - firmware retained.", "Returning to firmware."],
-        "guard": ["NATIVE MMIO GUARD PASSED"],
+        "guard": ["NATIVE MMIO GUARD PASSED", "NATIVE SCM GUARD PASSED"],
     }
     required = evidence[arguments.application]
     missing = [marker for marker in required if marker not in transcript]
@@ -173,12 +173,12 @@ def main() -> None:
     elif arguments.application in ("rpm", "native-gpu"):
         forbidden = ("RPM_CHANNEL=", "DEVICE_TRANSLATIONS=", "PREFLIGHT_SAVE_STAGE=",
                      "Attempting native RPM handoff", "RPM HANDOFF READY", "GPU POWER READY",
-                     "GPU_GCD_STATUS", "GPU_MMSS_SMMU_SPMI_MAPPINGS")
+                     "GPU_GCD_STATUS", "GPU_MMSS_SMMU_SPMI_MAPPINGS", "SMMU_PROFILE=EXACT_MMU3_XPUE1")
         if any(marker in transcript for marker in forbidden):
             parser.exit(1, "error: unsupported QEMU platform entered the native RPM path\n")
         print(f"QEMU GICv{arguments.gic_version}: RPM platform refusal and firmware return passed")
     elif arguments.application == "guard":
-        print(f"QEMU GICv{arguments.gic_version}: actual EL1 load/store abort recovery and continued valid access passed")
+        print(f"QEMU GICv{arguments.gic_version}: actual EL1 MMIO fault and unsupported-SMC handling passed")
     else:
         print(f"QEMU GICv{arguments.gic_version}: EFI entry, GOP, memory map, input and return passed")
     print("This is emulator evidence, not a Lumia hardware or XNU boot result.")
