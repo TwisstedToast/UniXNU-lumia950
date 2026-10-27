@@ -107,8 +107,10 @@ symbol values after stripping. It records input/output hashes. LLVM's current
 strip implementation rejects this kernel; no lossy hand-written Mach-O rewrite
 is substituted.
 
-The ADT describes the measured six CPU affinities and GICv2, while `cpus=1` limits
-the first boot. DarwinBoot must allocate an actual contiguous 512 MiB conventional
+The first-boot ADT exposes only the measured affinity-zero A53 and GICv2, with
+`cpus=1`. The six physical affinities remain documented by the firmware probes,
+but this entry does not invent a working secondary-CPU PSCI/HVC conduit.
+DarwinBoot must allocate an actual contiguous 512 MiB conventional
 memory window, not assume ownership of every byte of the advertised 3 GiB. The
 port identifier passed as `--unique-chip-id` is a loader/port value, not an Apple
 ECID or a fuse modification. GOP geometry is read live by the loader.
@@ -152,3 +154,6 @@ The source-only configuration also selects the actual source crypto initializer.
 It cannot wait for a prelinked provider that is absent from this image. This does
 not qualify the separate merged candidate's bootstrap or imported component ABI;
 that candidate remains explicitly unqualified and is not staged here.
+The 16.x build seals the real `mach.development.bcm2837.unstripped` output; this
+line has no 17.x `.noctf` artifact. The integrity-sealing step is retained, not
+skipped to work around the different output filename.

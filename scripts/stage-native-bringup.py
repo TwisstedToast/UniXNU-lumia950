@@ -185,7 +185,7 @@ def main():
     subprocess.run([sys.executable, str(ROOT / "scripts/make-lumia950-adt.py"), "--output", str(adt),
         "--dram-size", "0xc0000000", "--dram-base", "0", "--owned-memory-size", "0x20000000",
         "--unique-chip-id", args.unique_chip_id, "--chip-id", "0x8015",
-        "--cpu-regs", "0,1,2,3,0x100,0x101", "--psci-method", "hvc"], check=True)
+        "--cpu-regs", "0", "--psci-method", "none"], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/check-adt.py"), str(adt)], check=True)
     subprocess.run([sys.executable, str(ROOT / "scripts/check-payload.py"), "--config",
         str(output / "EFI/UniXNU/unixnu.toml"), "--payload-dir", str(output), "--panel", "1080x1920"], check=True)
@@ -193,6 +193,7 @@ def main():
         "stripped_kernel_sha256": hashlib.sha256(stripped).hexdigest(), "runtime_bytes_compared": checked,
         "external_symbol_values_preserved": symbols, "merged_kernel_qualification_bypassed": False,
         "root_filesystem_included": False, "ios_userspace_included": False, "handset_boot_observed": False,
+        "exposed_boot_cpu_affinity": 0, "secondary_cpu_conduit_qualified": False,
         "gpu_frame_observed": False, "files": {}}
     for destination in sorted(output.rglob("*")):
         if destination.is_file():

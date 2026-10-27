@@ -2307,3 +2307,13 @@ index 5815dd9..9c07ddc 100755
    printf '%s\n' "$NATIVE_ARCH_TIMER" > "$NATIVE_TIMER_STAMP"
  fi
  NATIVE_PAN=${XNU_NATIVE_PAN:-0}
+@@ -784,4 +849,7 @@
+ if [ "${XNU_SOURCE_CORECRYPTO14:-0}" = 1 ] && [ "$CRYPTO_BOOTSTRAP_MODE" = source ]; then
+-  python3 scripts/seal-source-crypto-kernel.py \
+-    build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/mach.development.bcm2837.unstripped.noctf
++  SOURCE_CRYPTO_KERNEL=build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/mach.development.bcm2837.unstripped
++  if [ "${XNU_VERSION%%.*}" != 8796 ]; then
++    SOURCE_CRYPTO_KERNEL=$SOURCE_CRYPTO_KERNEL.noctf
++  fi
++  python3 scripts/seal-source-crypto-kernel.py "$SOURCE_CRYPTO_KERNEL"
+ fi
