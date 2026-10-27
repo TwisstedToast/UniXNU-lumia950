@@ -167,7 +167,10 @@ jobs:
         run: python3 scripts/check-payload.py
 
       - name: Validate the source-only native bring-up contract
-        run: python3 scripts/test-native-bringup.py
+        run: |
+          python3 scripts/test-native-bringup.py
+          python3 scripts/test-native-install.py
+          python3 -m py_compile scripts/test-native-xnu-entry.py
 
       - name: The kernel stage composes with the menu stage
         # The marker the stager replaces lives in the menu configuration, and the tree it adds

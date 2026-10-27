@@ -21,6 +21,15 @@ fallback and overwritten files, and copying only the staged FAT files. Do not
 modify `UEFI.elf`, BootShim, stock Windows boot files, partition tables or BCD.
 The old fallback must remain recoverable on the SSD before any replacement.
 
+`scripts/install-native-bringup.py` implements that file-only installation for
+the measured boot state. It defaults to a dry run and requires the independently
+read volume and partition UUIDs. `--apply` first backs up and rehashes every
+existing EFIESP file on the separate SSD, then verifies the new payloads before
+replacing the fallback last. Final readback checks both the staged files and all
+other original files. Unexpected disk identities, changed boot hashes, an
+existing native tree, invalid stage hashes and insufficient space are refused.
+It never formats, repartitions, modifies BCD or automatically reboots/unmounts.
+
 ## Native hardware activation
 
 This is the first EFI caller of the GPU power and A418 command-hardware code. It
@@ -70,6 +79,12 @@ The result screen is CPU-drawn diagnostics. No microcode queue, DMA destination,
 shader, GPU-rendered image, measured FPS or iOS support is claimed by this test.
 SMMU routing may remain unsupported even after command hardware initialization.
 Actual handset results must be recorded separately from host tests and EFI builds.
+All numbers on this diagnostic screen are hexadecimal. `PMIC TYPE/SUB` packs
+type then subtype in two bytes; `RAIL IN/OUT CFG` packs range, voltage selector,
+mode and enable in four bytes. Raw PMIC status, A418 last register/value and ELR
+are retained alongside SMMU identifiers and the first four stream slots so a
+single full-screen photo captures the failing configuration. Unreached fields
+remain zero and are not represented as successful hardware reads.
 
 The rail mapping comes from the [Lumia board description](https://github.com/torvalds/linux/blob/v6.12/arch/arm64/boot/dts/qcom/msm8994-msft-lumia-octagon.dtsi),
 [PMI8994 SPMI description](https://github.com/torvalds/linux/blob/v6.12/arch/arm64/boot/dts/qcom/pmi8994.dtsi)
@@ -124,6 +139,14 @@ ADT. The legacy platform path retains its original gate. The test compiles the
 hash-qualified Apple clock and WFE functions with UBSan enabled and a mock DT,
 reproducing the old zero-base failure and checking both patched/legacy paths.
 No trap, sanitizer, kernel instruction or qualification gate is disabled.
+
+`scripts/test-native-xnu-entry.py` repeats the real A53/GICv2 instruction test on
+a private read-only ESP copy, using named kernel breakpoints rather than pixels.
+It stops at the first trap/panic/exception or `arm_vm_init` entry and records
+registers, clock bytes, WFE event index and kernel hash. The original kernel
+reproduces the same UBSan stop. Reaching VM initialization's entry proves only
+the preceding early initialization, not completion of VM, IOKit, an actual
+handset boot or iOS userspace.
 
 The source-only configuration also selects the actual source crypto initializer.
 It cannot wait for a prelinked provider that is absent from this image. This does

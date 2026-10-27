@@ -106,10 +106,12 @@ void NativeGpuProgress(const ProbeFramebuffer &framebuffer, const char *stage)
     ProbeFillRectangle(&framebuffer, 0, 0, framebuffer.width, framebuffer.height, 0);
     Line(framebuffer, 0, result.complete ? "NATIVE GPU HARDWARE INITIALIZED" : "NATIVE GPU ACTIVATION STOPPED", color);
     Line(framebuffer, 1, "NO WINDOWS OR FIRMWARE CALLS", color);
-    Line(framebuffer, 3, nativeGpuStage, color);
-    Line(framebuffer, 5, spmi::resultName(result.supply), color);
-    Number(framebuffer, 6, "RAIL UV", result.rail.final.microvolts, color);
-    Number(framebuffer, 7, "SPMI STATUS", result.bus.status, color);
+    Line(framebuffer, 2, nativeGpuStage, color);
+    Line(framebuffer, 3, spmi::resultName(result.supply), color);
+    Number(framebuffer, 4, "RAIL UV", result.rail.final.microvolts, color);
+    Number(framebuffer, 5, "SPMI STATUS", result.bus.status, color);
+    Number(framebuffer, 6, "SPMI VERSION", result.bus.version, color);
+    Number(framebuffer, 7, "SPMI COMMAND", result.bus.command, color);
     Line(framebuffer, 8, ResultName(result.clock), color);
     Number(framebuffer, 9, "POWER RESULT", static_cast<u32>(result.powerResult), color);
     Number(framebuffer, 10, "GX GDSCR", observed.gx, color);
@@ -117,17 +119,42 @@ void NativeGpuProgress(const ProbeFramebuffer &framebuffer, const char *stage)
     Number(framebuffer, 12, "CORE CBCR", observed.coreClock, color);
     Number(framebuffer, 13, "AHB CBCR", observed.ahbClock, color);
     Number(framebuffer, 14, "TIMER CBCR", observed.timerClock, color);
-    Number(framebuffer, 16, "GPU VERSION", result.snapshot.version, color);
-    Number(framebuffer, 17, "GPU CONFIG", result.snapshot.configuration, color);
-    Number(framebuffer, 18, "HW INIT", static_cast<u32>(result.hardwareResult), color);
-    Number(framebuffer, 19, "SMMU ROUTES", static_cast<u32>(result.routeResult), color);
-    Number(framebuffer, 20, "SMMU IDR0", result.routes.id[0], color);
-    Number(framebuffer, 21, "SMMU IDR1", result.routes.id[1], color);
-    Number(framebuffer, 22, "SMMU CR0", result.routes.control, color);
-    Number(framebuffer, 24, "ABORT ESR", native_mmio_esr, color);
-    Number(framebuffer, 25, "ABORT FAR", native_mmio_far, color);
-    Line(framebuffer, 27, "NO SHADER FRAME OR IOS CLAIMED", color);
-    Line(framebuffer, 28, "RESOURCES PINNED - FORCE REBOOT", color);
+    Number(framebuffer, 15, "GPU VERSION", result.snapshot.version, color);
+    Number(framebuffer, 16, "GPU CONFIG", result.snapshot.configuration, color);
+    Number(framebuffer, 17, "HW INIT", static_cast<u32>(result.hardwareResult), color);
+    Number(framebuffer, 18, "HW INDEX", result.hardware.lastIndex, color);
+    Number(framebuffer, 19, "HW VALUE", result.hardware.lastValue, color);
+    Number(framebuffer, 20, "SMMU ROUTES", static_cast<u32>(result.routeResult), color);
+    for (u32 index = 0; index < 3; ++index) {
+        const char *labels[] = {"SMMU IDR0", "SMMU IDR1", "SMMU IDR2"};
+        Number(framebuffer, 21 + index, labels[index], result.routes.id[index], color);
+    }
+    Number(framebuffer, 24, "SMMU CR0", result.routes.control, color);
+    Number(framebuffer, 25, "PMIC TYPE/SUB", (static_cast<u32>(result.rail.initial.type) << 8) |
+        result.rail.initial.subtype, color);
+    const spmi::RailSnapshot rails[] = {result.rail.initial, result.rail.final};
+    const char *railLabels[] = {"RAIL IN CFG", "RAIL OUT CFG"};
+    for (u32 index = 0; index < 2; ++index) {
+        const auto &rail = rails[index];
+        Number(framebuffer, 26 + index, railLabels[index], (static_cast<u32>(rail.range) << 24) |
+            (static_cast<u32>(rail.voltage) << 16) | (static_cast<u32>(rail.mode) << 8) | rail.enable, color);
+    }
+    Number(framebuffer, 28, "RAIL IN STATUS", result.rail.initial.status, color);
+    Number(framebuffer, 29, "RAIL OUT STATUS", result.rail.final.status, color);
+    const char *streamLabels[] = {"SMMU SMR0", "SMMU SMR1", "SMMU SMR2", "SMMU SMR3"};
+    const char *mappingLabels[] = {"SMMU S2CR0", "SMMU S2CR1", "SMMU S2CR2", "SMMU S2CR3"};
+    for (u32 index = 0; index < 4; ++index) {
+        Number(framebuffer, 30 + 2 * index, streamLabels[index], result.routes.match[index], color);
+        Number(framebuffer, 31 + 2 * index, mappingLabels[index], result.routes.mapping[index], color);
+    }
+    Number(framebuffer, 38, "SMMU CBAR0", result.routes.attributes[0], color);
+    Number(framebuffer, 39, "SMMU CBAR1", result.routes.attributes[1], color);
+    Number(framebuffer, 40, "SMMU STREAMS", result.routes.count, color);
+    Number(framebuffer, 41, "ABORT ESR", native_mmio_esr, color);
+    Number(framebuffer, 42, "ABORT FAR", native_mmio_far, color);
+    Number(framebuffer, 43, "ABORT ELR", native_mmio_elr, color);
+    Line(framebuffer, 45, "NO SHADER FRAME OR IOS CLAIMED", color);
+    Line(framebuffer, 46, "RESOURCES PINNED - FORCE REBOOT", color);
     Flush(framebuffer, 0, framebuffer.height);
     for (;;) { asm volatile("wfi"); }
 }
