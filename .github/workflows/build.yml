@@ -103,6 +103,15 @@ jobs:
           print("board.toml and defconfig: ok")
           PY
 
+      - name: Check real 16.x clock discovery for an identity-mapped native bus
+        run: |
+          mkdir -p work/clock-reference
+          source=https://raw.githubusercontent.com/apple-oss-distributions/xnu/1b191cb58250d0705d8a51287127505aa4bc0789
+          curl -fsSL "$source/pexpert/arm/pe_identify_machine.c" -o work/clock-reference/pe_identify_machine.c
+          curl -fsSL "$source/osfmk/arm64/machine_routines.c" -o work/clock-reference/machine_routines.c
+          python3 scripts/test-native-clocks.py --identify work/clock-reference/pe_identify_machine.c \
+              --routines work/clock-reference/machine_routines.c
+
       - name: The 16.x patch line has no holes
         # feeds.toml moves the build to xnu-8796.141.3, and UniXNU carries that line's patch
         # overlay. A skip must name a base patch and state why: an omission that outlives its

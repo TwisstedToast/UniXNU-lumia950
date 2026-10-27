@@ -106,3 +106,26 @@ results, then resolve the complete runtime-qualified image and userspace path.
 The pinned loader's old green-bar wording incorrectly claimed kernel execution.
 `ci/darwinboot-handoff-label.patch` corrects that message: the bar is painted by
 the loader **before** branching. It is never accepted as proof of XNU boot.
+
+### First real early-boot fault
+
+The source-only image was executed through DarwinBoot in an A53/GICv2 QEMU VM.
+A hardware breakpoint caught its first UBSan trap at `wfe_timeout_configure`,
+before the recursive early exception-handler faults. The Lumia ADT's legitimate
+identity bus has a zero parent base. Apple's `pe_identify_machine` treated that
+as an absent SoC and returned before reading the CPU's `timebase-frequency`.
+Consequently `flsll(0)` entered an invalid signed shift/subtraction calculation.
+This was kernel instruction execution in emulation, not an on-handset boot.
+
+The 8796 overlay now makes native architectural-timer clock discovery independent
+of an Apple MMIO base. Unknown CPU/bus frequencies remain unknown, with their
+derived divisions guarded; the measured 19.2 MHz timebase still comes from the
+ADT. The legacy platform path retains its original gate. The test compiles the
+hash-qualified Apple clock and WFE functions with UBSan enabled and a mock DT,
+reproducing the old zero-base failure and checking both patched/legacy paths.
+No trap, sanitizer, kernel instruction or qualification gate is disabled.
+
+The source-only configuration also selects the actual source crypto initializer.
+It cannot wait for a prelinked provider that is absent from this image. This does
+not qualify the separate merged candidate's bootstrap or imported component ABI;
+that candidate remains explicitly unqualified and is not staged here.

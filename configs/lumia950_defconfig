@@ -36,5 +36,5 @@ CONFIG_XNU_EXTRA_LD_ARCHIVES="-Wl,-force_load,{tree}/build/native-legacy-display
 
 CONFIG_XNU_ARMVIRT_PLATFORM=n
 
-# The kernel is linked against the prelinked kernelcache of the target image.
-CONFIG_XNU_CRYPTO_BOOTSTRAP="prelinked"
+# The source-only early-boot image has no prelinked provider to initialize crypto.
+CONFIG_XNU_CRYPTO_BOOTSTRAP="source"
