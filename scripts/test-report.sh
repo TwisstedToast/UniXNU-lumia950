@@ -34,5 +34,6 @@ mkdir -p "$OUT"
   -I "$EDK2/MdePkg/Include" -I "$EDK2/MdePkg/Include/$architecture" \
   -I "$ROOT/drivers/NativeAdreno418" \
   "$ROOT/tools/uefi-probe/FirmwareGcd.cpp" \
+  "$ROOT/tools/uefi-probe/FirmwareMemory.cpp" \
   "$ROOT/tools/uefi-probe/Test/check-firmware-gcd.cpp" -o "$OUT/check-firmware-gcd"
 "$OUT/check-firmware-gcd"

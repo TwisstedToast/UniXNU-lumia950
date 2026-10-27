@@ -411,8 +411,6 @@ static EFI_STATUS Run(EFI_HANDLE image, EFI_SYSTEM_TABLE *systemTable)
     UINT64 stackSelection = 0;
     asm volatile("mrs %0, spsel" : "=r"(stackSelection));
     if (stackSelection != 1) { return EFI_UNSUPPORTED; }
-    preflightStage = "NATIVE_GPU_MAPPINGS";
-    if (!NativeGpuMappings(firmware)) { SavePreflight(image); return EFI_UNSUPPORTED; }
 #endif
     preflightStage = "SMEM_PROFILE";
     const ProbeFirmwareSmem smem = ProbeFindFirmwareSmem(firmware->BootServices);
@@ -499,7 +497,11 @@ static EFI_STATUS Run(EFI_HANDLE image, EFI_SYSTEM_TABLE *systemTable)
     status = services->GetMemoryMap(&mapBytes, reinterpret_cast<EFI_MEMORY_DESCRIPTOR *>(map), &mapKey, &stride, &version);
     const bool mapValid = !EFI_ERROR(status) && mapBytes <= capacity;
 #ifdef LUMIA_GPU_POWER_TEST
-    if (!mapValid || !ProbeMmioRangesReserved(map, mapBytes, stride, nativeGpuRegions, 3, true)) {
+    preflightStage = "NATIVE_GPU_MAPPINGS";
+    const EFI_STATUS gpuMappingStatus = mapValid ? ProbePrepareGpuMmio(firmware, map, mapBytes, stride) : EFI_UNSUPPORTED;
+    PrintHex("GPU_APERTURE_PREPARE_STATUS", gpuMappingStatus);
+    if (EFI_ERROR(gpuMappingStatus) || !NativeGpuMappings(firmware) ||
+        !ProbeMmioRangesReserved(map, mapBytes, stride, nativeGpuRegions, 3, true)) {
         services->FreePool(map); SavePreflight(image); return EFI_UNSUPPORTED;
     }
 #endif

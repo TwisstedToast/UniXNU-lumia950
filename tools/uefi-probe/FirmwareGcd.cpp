@@ -1,4 +1,5 @@
 #include "FirmwareGcd.h"
+#include "FirmwareMemory.h"
 #include <Guid/DxeServices.h>
 
 namespace {
@@ -76,4 +77,42 @@ ProbeRpmGcd ProbeFindMmioGcd(EFI_SYSTEM_TABLE *firmware,
     result.status = EFI_SUCCESS;
     result.qualified = TRUE;
     return result;
+}
+
+EFI_STATUS ProbePrepareGpuMmio(EFI_SYSTEM_TABLE *firmware, const VOID *map,
+                               UINTN mapBytes, UINTN stride)
+{
+    const adreno::rpm::MemoryRegion region = {0xfdb00000, 0xfdb00000, 0x20000};
+    if (!firmware || !firmware->ConfigurationTable || !firmware->NumberOfTableEntries ||
+        firmware->NumberOfTableEntries > 4096 ||
+        !ProbeMmioRangesReserved(map, mapBytes, stride, &region, 1, true)) { return EFI_UNSUPPORTED; }
+    EFI_DXE_SERVICES *services = nullptr;
+    const EFI_GUID expected = DXE_SERVICES_TABLE_GUID;
+    for (UINTN index = 0; index < firmware->NumberOfTableEntries; ++index) {
+        const auto &entry = firmware->ConfigurationTable[index];
+        if (!SameGuid(entry.VendorGuid, expected)) { continue; }
+        if (services || !entry.VendorTable) { return EFI_COMPROMISED_DATA; }
+        services = static_cast<EFI_DXE_SERVICES *>(entry.VendorTable);
+    }
+    const UINTN minimum = OFFSET_OF(EFI_DXE_SERVICES, GetMemorySpaceDescriptor) + sizeof(EFI_GET_MEMORY_SPACE_DESCRIPTOR);
+    if (!services || (reinterpret_cast<UINTN>(services) & 7) ||
+        services->Hdr.Signature != DXE_SERVICES_SIGNATURE || services->Hdr.HeaderSize < minimum ||
+        services->Hdr.HeaderSize > 4096 || !services->GetMemorySpaceDescriptor) { return EFI_UNSUPPORTED; }
+    EFI_GCD_MEMORY_SPACE_DESCRIPTOR first = {}, last = {};
+    EFI_STATUS status = services->GetMemorySpaceDescriptor(region.physical, &first);
+    if (EFI_ERROR(status)) { return status; }
+    status = services->GetMemorySpaceDescriptor(region.physical + region.bytes - 1, &last);
+    if (EFI_ERROR(status)) { return status; }
+    if (Covers(first, region) && Covers(last, region)) { return EFI_SUCCESS; }
+    if (services->Hdr.HeaderSize < OFFSET_OF(EFI_DXE_SERVICES, SetMemorySpaceAttributes) +
+            sizeof(services->SetMemorySpaceAttributes) ||
+        !services->AddMemorySpace || !services->SetMemorySpaceAttributes ||
+        first.GcdMemoryType != EfiGcdMemoryTypeNonExistent || last.GcdMemoryType != EfiGcdMemoryTypeNonExistent ||
+        first.BaseAddress != last.BaseAddress || first.Length != last.Length ||
+        !first.Length || first.BaseAddress > region.physical ||
+        first.BaseAddress > ~static_cast<UINT64>(0) - first.Length ||
+        first.BaseAddress + first.Length < region.physical + region.bytes) { return EFI_UNSUPPORTED; }
+    status = services->AddMemorySpace(EfiGcdMemoryTypeMemoryMappedIo, region.physical, region.bytes, EFI_MEMORY_UC);
+    if (EFI_ERROR(status)) { return status; }
+    return services->SetMemorySpaceAttributes(region.physical, region.bytes, EFI_MEMORY_UC);
 }

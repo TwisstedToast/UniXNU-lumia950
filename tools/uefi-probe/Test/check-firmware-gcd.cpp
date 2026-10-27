@@ -55,6 +55,59 @@ struct Environment {
     ProbeRpmGcd find() { return ProbeFindRpmGcd(&firmware, layout); }
 };
 Environment *Environment::active;
+
+struct GpuEnvironment {
+    static GpuEnvironment *active;
+    EFI_SYSTEM_TABLE firmware = {};
+    EFI_CONFIGURATION_TABLE table = {};
+    EFI_DXE_SERVICES services = {};
+    EFI_GCD_MEMORY_SPACE_DESCRIPTOR descriptor = {};
+    EFI_MEMORY_DESCRIPTOR memory = {};
+    unsigned added = 0;
+    unsigned attributes = 0;
+    bool failAttributes = false;
+    GpuEnvironment()
+    {
+        active = this;
+        table.VendorGuid = DXE_SERVICES_TABLE_GUID; table.VendorTable = &services;
+        firmware.ConfigurationTable = &table; firmware.NumberOfTableEntries = 1;
+        services.Hdr.Signature = DXE_SERVICES_SIGNATURE; services.Hdr.HeaderSize = sizeof(services);
+        services.GetMemorySpaceDescriptor = Get;
+        services.AddMemorySpace = Add;
+        services.SetMemorySpaceAttributes = Attributes;
+        descriptor.BaseAddress = 0xfda00000; descriptor.Length = 0x400000;
+        descriptor.GcdMemoryType = EfiGcdMemoryTypeNonExistent;
+        memory.Type = EfiConventionalMemory; memory.PhysicalStart = 0x80000000; memory.NumberOfPages = 0x1000;
+    }
+    static EFI_STATUS EFIAPI Get(EFI_PHYSICAL_ADDRESS, EFI_GCD_MEMORY_SPACE_DESCRIPTOR *output)
+    {
+        *output = active->descriptor;
+        return EFI_SUCCESS;
+    }
+    static EFI_STATUS EFIAPI Add(EFI_GCD_MEMORY_TYPE type, EFI_PHYSICAL_ADDRESS base,
+                                 UINT64 length, UINT64 capabilities)
+    {
+        if (type != EfiGcdMemoryTypeMemoryMappedIo || base != 0xfdb00000 ||
+            length != 0x20000 || capabilities != EFI_MEMORY_UC) { return EFI_INVALID_PARAMETER; }
+        ++active->added;
+        active->descriptor.BaseAddress = base; active->descriptor.Length = length;
+        active->descriptor.GcdMemoryType = type; active->descriptor.Capabilities = capabilities;
+        return EFI_SUCCESS;
+    }
+    static EFI_STATUS EFIAPI Attributes(EFI_PHYSICAL_ADDRESS base, UINT64 length, UINT64 attributes)
+    {
+        if (base != 0xfdb00000 || length != 0x20000 || attributes != EFI_MEMORY_UC) { return EFI_INVALID_PARAMETER; }
+        ++active->attributes;
+        if (active->failAttributes) { return EFI_DEVICE_ERROR; }
+        active->descriptor.Attributes = attributes;
+        return EFI_SUCCESS;
+    }
+    EFI_STATUS prepare()
+    {
+        return ProbePrepareGpuMmio(&firmware, &memory, sizeof(memory), sizeof(memory));
+    }
+};
+GpuEnvironment *GpuEnvironment::active;
 }
 
 int main()
@@ -118,6 +171,28 @@ int main()
     malformed.control.physical = ~static_cast<adreno::u64>(0) - 3;
     expect(ProbeFindRpmGcd(&wrapped.firmware, malformed).status == EFI_INVALID_PARAMETER && wrapped.calls == 0,
            "allocation overflow is refused before a GCD query");
-    std::printf("EFI RPM GCD discovery: %u checks, %u failures (mock DXE; no resource-map writes)\n", checks, failures);
+    GpuEnvironment gpu;
+    expect(gpu.prepare() == EFI_SUCCESS && gpu.added == 1 && gpu.attributes == 1,
+           "only absent GPU/SMMU aperture is reserved and mapped uncached");
+    expect(gpu.prepare() == EFI_SUCCESS && gpu.added == 1 && gpu.attributes == 1,
+           "already classified aperture is not reserved a second time");
+    for (unsigned mutation = 0; mutation < 6; ++mutation) {
+        GpuEnvironment refused;
+        switch (mutation) {
+        case 0: refused.memory.PhysicalStart = 0xfdb00000; break;
+        case 1: refused.descriptor.GcdMemoryType = EfiGcdMemoryTypeSystemMemory; break;
+        case 2: refused.descriptor.GcdMemoryType = EfiGcdMemoryTypeReserved; break;
+        case 3: refused.descriptor.Length = 4096; break;
+        case 4: refused.services.AddMemorySpace = nullptr; break;
+        case 5: refused.services.SetMemorySpaceAttributes = nullptr; break;
+        }
+        expect(EFI_ERROR(refused.prepare()) && !refused.added && !refused.attributes,
+               "RAM reserved descriptors short coverage and missing services refuse before reservation changes");
+    }
+    GpuEnvironment failedMapping;
+    failedMapping.failAttributes = true;
+    expect(failedMapping.prepare() == EFI_DEVICE_ERROR && failedMapping.added == 1 && failedMapping.attributes == 1,
+           "failed page mapping is reported without removing an uncertain MMIO reservation");
+    std::printf("EFI GCD discovery/GPU mapping: %u checks, %u failures (mock DXE only)\n", checks, failures);
     return failures ? 1 : 0;
 }

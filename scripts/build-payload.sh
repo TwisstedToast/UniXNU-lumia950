@@ -50,6 +50,13 @@ else
   echo "== DarwinBoot: applied ci/darwinboot-payload-volume.patch"
 fi
 
+if git -C "$DARWINBOOT" apply --reverse --check "$ROOT/ci/darwinboot-handoff-label.patch" >/dev/null 2>&1; then
+  echo "== DarwinBoot: accurate handoff label already there"
+else
+  git -C "$DARWINBOOT" apply "$ROOT/ci/darwinboot-handoff-label.patch"
+  echo "== DarwinBoot: label distinguishes loader handoff from XNU execution"
+fi
+
 echo "== UniXNU and UniXNUDxe"
 UNIXNU_EDK2=$EDK2 JOBS=$JOBS PYTHON_COMMAND=$PYTHON "$UNIXNU/package/build.sh" -b "$TARGET" -t "$TOOLCHAIN"
 

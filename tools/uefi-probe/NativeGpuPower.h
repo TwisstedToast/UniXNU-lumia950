@@ -165,6 +165,16 @@ void NativeGpuProgress(const ProbeFramebuffer &framebuffer, const char *stage)
         result.clock = rpm::transact(result.session, rpm::Set::Active, rpm::kGraphicsParent, &rate, 1, 10000, 10);
     }
     if (result.clock != rpm::Result::Ok) { NativeGpuResultScreen(framebuffer, result); }
+    NativeGpuProgress(framebuffer, "RECHECKING SUPPLY AFTER RPM ACK");
+    result.supply = spmi::inspectGraphicsRail(result.bus, result.rail.final, 10000);
+    const auto &rail = result.rail.final;
+    result.rail.ready = result.supply == spmi::Result::Ok && !rail.range &&
+        rail.microvolts >= 980000 && rail.microvolts <= 1355000 &&
+        (rail.enable & 0x80) && (rail.status & 0x80) && (rail.mode & 0x80);
+    if (!result.rail.ready) {
+        if (result.supply == spmi::Result::Ok) { result.supply = spmi::Result::Unqualified; }
+        NativeGpuResultScreen(framebuffer, result);
+    }
     NativeGpuProgress(framebuffer, "ENABLING OXILI DOMAINS AND CLOCKS");
     const power::PinnedDependencies dependencies = {result.rail.final.microvolts, 19200, true, true, true, true};
     result.powerResult = power::startPinned(result.power, registers, dependencies, 10000);

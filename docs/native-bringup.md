@@ -30,6 +30,11 @@ Its steps are:
 - Verify the measured MSM8992 MADT, boot A53, EL1h/MMU/timer, GOP, GCD MMIO
   reservations, actual Device identity translations and absence of conflicting
   UEFI RAM allocations. GPU registers are not read while the domains are off.
+  The matching firmware source maps MMSS only through `0xfd9dc000`, omitting
+  `0xfdb00000..0xfdb1ffff`. If this GPU/SMMU aperture is GCD NonExistent and has no
+  UEFI RAM conflict, reserve exactly those 128 KiB as MMIO and request UC page
+  attributes through DXE before checking every Device translation. Existing RAM,
+  reserved ownership, ambiguous descriptors and failed mappings are not overridden.
 - Save the preflight. **Volume Up** deliberately authorizes the post-EBS test;
   another key cancels. No native SPMI transaction or GPU power/clock write occurs
   before this confirmation and successful firmware exit.
@@ -45,6 +50,8 @@ Its steps are:
   This dedicated graphics resource is used only after exclusive cold-GPU ownership;
   it is pinned, not restored to a guessed prior baseline. The APPS graphics vote
   may change. Shared configuration/memory-bus votes are deliberately **untouched**.
+  Re-read the actual graphics supply after the clock ACK; an inadequate or changed
+  regulator policy stops before domain/branch enable instead of trusting stale data.
 - Enable the OxiLi domains, retention and three branches using bounded polls.
   Read actual GPU identity, hold/program the A418 command hardware, and inspect
   inherited SMMU routing without modifying global routes, security or context banks.
@@ -95,3 +102,7 @@ No iOS root filesystem, APFS kext closure, trust cache or userspace is included 
 this early boot tree. A kernel panic or root wait is possible and is evidence to
 debug, not successful iOS. First obtain real kernel handoff/console/initialization
 results, then resolve the complete runtime-qualified image and userspace path.
+
+The pinned loader's old green-bar wording incorrectly claimed kernel execution.
+`ci/darwinboot-handoff-label.patch` corrects that message: the bar is painted by
+the loader **before** branching. It is never accepted as proof of XNU boot.
