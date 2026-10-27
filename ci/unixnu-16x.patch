@@ -2221,6 +2221,51 @@ new file mode 100644
 ++SFLAGS += $(SFLAGS_EXTRA)
 + 
 + #
+diff --git a/patches/xnu-8796/source-corecrypto14-bootstrap.patch b/patches/xnu-8796/source-corecrypto14-bootstrap.patch
+new file mode 100644
+--- /dev/null
++++ b/patches/xnu-8796/source-corecrypto14-bootstrap.patch
+@@ -0,0 +1,40 @@
++diff --git a/osfmk/prng/prng_random.c b/osfmk/prng/prng_random.c
++index c52f0ab..412c167 100644
++--- a/osfmk/prng/prng_random.c
+++++ b/osfmk/prng/prng_random.c
++@@ -420,3 +420,35 @@ random_bool_gen_bits(struct bool_gen * bg, unsigned int * buffer, unsigned int c
++ 	}
++ 	return rbits;
++ }
+++
+++/* Internal source-provider verification; no replacement callbacks or skipped POST. */
+++#if defined(XNU_SOURCE_CORECRYPTO14)
+++#include <kern/startup.h>
+++#include <mach/kmod.h>
+++#include <mach-o/loader.h>
+++
+++extern struct mach_header_64 _mh_execute_header;
+++extern kern_return_t corecrypto_kext_start(kmod_info_t *, void *);
+++SECURITY_READ_ONLY_LATE(kern_return_t) source_corecrypto14_status = KERN_FAILURE;
+++
+++static void
+++source_corecrypto14_bootstrap(void)
+++{
+++	static kmod_info_t info = {
+++		.info_version = KMOD_INFO_VERSION,
+++		.name = "source-corecrypto14-evaluation",
+++		.version = "14.0",
+++	};
+++	uint32_t mode = 0;
+++
+++	if (PE_parse_boot_argn("fips_mode", &mode, sizeof(mode)) && mode != 0) {
+++		panic("source corecrypto verification requires complete default POST");
+++	}
+++	info.address = (vm_address_t)&_mh_execute_header;
+++	source_corecrypto14_status = corecrypto_kext_start(&info, NULL);
+++	if (source_corecrypto14_status != KERN_SUCCESS) {
+++		panic("source corecrypto initialization failed: %d", source_corecrypto14_status);
+++	}
+++}
+++STARTUP(SYSCTL, STARTUP_RANK_LAST, source_corecrypto14_bootstrap);
+++#endif
 diff --git a/scripts/build-xnu-4k-baseline.sh b/scripts/build-xnu-4k-baseline.sh
 index 5815dd9..9c07ddc 100755
 --- a/scripts/build-xnu-4k-baseline.sh

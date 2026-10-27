@@ -171,6 +171,13 @@ drivers remain polling/identity bring-up. `--crypto-post` observes the real
 provider entry/return and status, stopping on intervening traps or a bounded
 timeout; no successful runtime POST or completed IOKit/iOS boot is claimed yet.
 The kernel menu entry is explicitly experimental, not a ready iOS installation.
+The next exception was traced to `sha1_init`, ELR `0xfffffff00785dbb8`, FAR `0x28`:
+the real crypto dispatch table was still unregistered. In this 16.x startup order,
+`PE_init_iokit` runs before `EARLY_BOOT`, while IOKit already needs SHA1. The line's
+source-provider overlay therefore schedules the unchanged full POST/bootstrap at
+`SYSCTL` rank last, after its allocator/locks/thread-call prerequisites but before
+IOKit. This changes initialization order, not crypto implementations or checks;
+its runtime result must be observed before declaring that blocker resolved.
 
 The source-only configuration also selects the actual source crypto initializer.
 It cannot wait for a prelinked provider that is absent from this image. This does
