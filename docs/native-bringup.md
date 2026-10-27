@@ -163,3 +163,7 @@ ignored these variables. A linked archive alone therefore did not establish that
 its source bootstrap was compiled. The make-expansion regression and mandatory
 bootstrap-symbol/POST-field checks now catch that difference before accepting an
 image. Runtime source-provider POST remains a separate required observation.
+The native stager and installer both independently require the actual provider
+symbols and matching POST HMAC in the image. A JSON flag, a linked archive or
+the known older source-only image cannot satisfy this gate. This is a static
+integrity/initialization contract, never a claim that runtime POST already passed.

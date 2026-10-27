@@ -2,6 +2,7 @@
 import argparse
 import datetime
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -10,6 +11,11 @@ import subprocess
 import tempfile
 import time
 import tomllib
+
+
+SPEC = importlib.util.spec_from_file_location("native_stage", Path(__file__).with_name("stage-native-bringup.py"))
+STAGE = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(STAGE)
 
 
 PHONE = Path("/Volumes/EFIESP")
@@ -62,6 +68,7 @@ def stage_files(stage):
     manifest = json.loads(manifest_data)
     if manifest.get("schema") != "lumia950-native-bringup-v1" or \
         manifest.get("merged_kernel_qualification_bypassed") is not False or \
+        manifest.get("source_crypto_integrity_verified") is not True or \
         manifest.get("ios_userspace_included") is not False or set(manifest.get("files", {})) != FILES:
         raise ValueError("unexpected native bring-up contract or file set")
     result = {}
@@ -78,6 +85,7 @@ def stage_files(stage):
         raise ValueError("tests must be explicit choices, never automatic boot targets")
     if result["EFI/BOOT/BOOTAA64.EFI"] != result["EFI/UniXNU/UniXNU.efi"]:
         raise ValueError("fallback and named menu differ")
+    STAGE.crypto_contract(result["EFI/UniXNU/Payloads/kernel.macho"])
     result["EFI/UniXNU/native-bringup.json"] = manifest_data
     return result
 

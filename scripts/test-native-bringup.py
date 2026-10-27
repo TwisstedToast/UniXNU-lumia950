@@ -1,4 +1,5 @@
 import importlib.util
+import hmac
 from pathlib import Path
 import struct
 import unittest
@@ -21,6 +22,26 @@ def image():
     struct.pack_into("<IBBHQ", data, 2048, 1, 0x0F, 1, 0, base + 512)
     data[2064:2072] = b"\0_start\0"
     data[512:516] = bytes.fromhex("1f2003d5")
+    return data
+
+
+def crypto_image():
+    data = bytearray(4096)
+    base = 0xFFFFFFF007004000
+    names = sorted(stage.CRYPTO_SYMBOLS)
+    strings = b"\0" + b"\0".join(name.encode() for name in names) + b"\0"
+    struct.pack_into("<8I", data, 0, 0xFEEDFACF, 0x0100000C, 0, 2, 3, 544, 0, 0)
+    struct.pack_into("<II16sQQQQIIII", data, 32, 0x19, 232, b"__TEXT", base, 4096, 0, 4096, 5, 5, 2, 0)
+    struct.pack_into("<16s16sQQ8I", data, 104, b"__text", b"__TEXT", base + 1024, 256, 1024, 2, 0, 0, 0x80000400, 0, 0, 0)
+    struct.pack_into("<16s16sQQ8I", data, 184, b"__fips_hmacs", b"__TEXT", base + 1536, 32, 1536, 2, 0, 0, 0, 0, 0, 0)
+    struct.pack_into("<4I", data, 264, 5, 288, 6, 68)
+    struct.pack_into("<Q", data, 264 + 272, base + 1024)
+    struct.pack_into("<6I", data, 552, 2, 24, 2048, 3, 2096, len(strings))
+    for index, name in enumerate(names):
+        struct.pack_into("<IBBHQ", data, 2048 + index * 16, strings.index(name.encode()), 0x0F, 1, 0, base + 1024 + index * 4)
+    data[2096:2096 + len(strings)] = strings
+    data[1024:1280] = bytes.fromhex("1f2003d5") * 64
+    data[1536:1568] = hmac.digest(b"\0", data[1024:1280], "sha256")
     return data
 
 
@@ -79,6 +100,23 @@ class NativeBringupTests(unittest.TestCase):
         self.assertEqual(menu["boot"]["default"], "exit")
         self.assertEqual(len(menu["entry"]), 3)
         self.assertIn("no iOS userspace", menu["entry"][1]["title"])
+
+    def test_source_provider_integrity_is_not_optional(self):
+        with self.assertRaisesRegex(ValueError, "bootstrap/provider"):
+            stage.crypto_contract(image())
+        data = crypto_image()
+        report = stage.crypto_contract(data)
+        self.assertEqual(report["code_bytes"], 256)
+        self.assertFalse(report["runtime_post_observed"])
+        data[1536] ^= 1
+        with self.assertRaisesRegex(ValueError, "not sealed"):
+            stage.crypto_contract(data)
+
+    def test_instruction_changes_invalidate_the_real_post_field(self):
+        data = crypto_image()
+        data[1028] ^= 1
+        with self.assertRaisesRegex(ValueError, "not sealed"):
+            stage.crypto_contract(data)
 
 
 if __name__ == "__main__":

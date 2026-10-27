@@ -13,6 +13,9 @@ from unittest.mock import patch
 SPEC = importlib.util.spec_from_file_location("native_install", Path(__file__).with_name("install-native-bringup.py"))
 INSTALL = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(INSTALL)
+FIXTURE_SPEC = importlib.util.spec_from_file_location("native_fixture", Path(__file__).with_name("test-native-bringup.py"))
+FIXTURE = importlib.util.module_from_spec(FIXTURE_SPEC)
+FIXTURE_SPEC.loader.exec_module(FIXTURE)
 
 
 class NativeInstallTests(unittest.TestCase):
@@ -38,11 +41,13 @@ class NativeInstallTests(unittest.TestCase):
         existing.write_bytes(b"real earlier report")
         self.before = self.contents(self.phone)
         self.manifest = {"schema": "lumia950-native-bringup-v1", "merged_kernel_qualification_bypassed": False,
-            "ios_userspace_included": False, "files": {}}
+            "ios_userspace_included": False, "source_crypto_integrity_verified": True, "files": {}}
         for name in sorted(INSTALL.FILES):
             data = b"menu" if name.endswith(".EFI") or name.endswith("UniXNU.efi") else name.encode()
             if name.endswith(".toml"):
                 data = b'[boot]\ndefault = "exit"\n[[entry]]\nid="gpu"\n[[entry]]\nid="xnu"\n[[entry]]\nid="exit"\n'
+            if name.endswith("kernel.macho"):
+                data = bytes(FIXTURE.crypto_image())
             self.set_file(name, data)
         self.save_manifest()
         self.volume = {"VolumeUUID": "expected-volume", "DiskUUID": "expected-partition", "FilesystemType": "msdos",
@@ -122,6 +127,15 @@ class NativeInstallTests(unittest.TestCase):
         with patch.object(INSTALL, "write_verified", side_effect=OSError("backup unavailable")):
             with self.assertRaisesRegex(OSError, "backup unavailable"):
                 self.run_install()
+        self.assertEqual(self.contents(self.phone), self.before)
+
+    def test_manifest_cannot_assert_integrity_for_an_unsealed_image(self):
+        data = FIXTURE.crypto_image()
+        data[1536] ^= 1
+        self.set_file("EFI/UniXNU/Payloads/kernel.macho", bytes(data))
+        self.save_manifest()
+        with self.assertRaisesRegex(ValueError, "not sealed"):
+            self.run_install()
         self.assertEqual(self.contents(self.phone), self.before)
 
     def test_payload_write_failure_keeps_old_fallback(self):

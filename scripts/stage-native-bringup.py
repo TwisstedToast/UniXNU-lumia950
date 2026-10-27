@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import hashlib
+import hmac
 import json
 from pathlib import Path
 import struct
@@ -10,7 +11,7 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
-NATIVE_KERNEL_SHA256 = "10c5edac166fe1da4e09e662856f73bcec1f00416a739e666c22854513844fc0"
+CRYPTO_SYMBOLS = {"_source_corecrypto14_bootstrap", "_source_corecrypto14_status", "_corecrypto_kext_start"}
 
 
 def contract(blob):
@@ -22,7 +23,7 @@ def contract(blob):
     if not count or count > 256 or not length or length > len(blob) - 32:
         raise ValueError("invalid Mach-O commands")
     offset, end = 32, 32 + length
-    segments, symbols, entry = {}, {}, None
+    segments, symbols, crypto_symbols, entry = {}, {}, {}, None
     for _ in range(count):
         if offset + 8 > end:
             raise ValueError("truncated command")
@@ -66,6 +67,10 @@ def contract(blob):
                 name = blob[strings + name_offset:stop].decode("utf-8")
                 if symbol_type & 0x0E == 0:
                     raise ValueError(f"unresolved native symbol: {name}")
+                if name in CRYPTO_SYMBOLS and symbol_type & 0x0E == 0x0E:
+                    if name in crypto_symbols:
+                        raise ValueError("ambiguous source crypto symbol")
+                    crypto_symbols[name] = value
                 if symbol_type & 1:
                     if name in symbols and symbols[name] != value:
                         raise ValueError("ambiguous external symbol")
@@ -85,7 +90,39 @@ def contract(blob):
     if span > 512 * 1024 * 1024 - 2 * 1024 * 1024:
         raise ValueError("native kernel exceeds the loader's owned window")
     return {"entry": entry, "base": base, "span": span, "header_bytes": end,
-            "segments": segments, "external_symbols": symbols}
+            "segments": segments, "external_symbols": symbols, "source_crypto_symbols": crypto_symbols}
+
+
+def crypto_contract(blob):
+    parsed = contract(blob)
+    if set(parsed["source_crypto_symbols"]) != CRYPTO_SYMBOLS:
+        raise ValueError("source-only image lacks its real crypto bootstrap/provider symbols")
+    code, integrity = None, None
+    offset = 32
+    for _ in range(struct.unpack_from("<I", blob, 16)[0]):
+        command, length = struct.unpack_from("<II", blob, offset)
+        if command == 0x19:
+            for index in range(struct.unpack_from("<I", blob, offset + 64)[0]):
+                section = offset + 72 + index * 80
+                name, segment, address, size, position = struct.unpack_from("<16s16sQQI", blob, section)
+                name, segment = name.rstrip(b"\0"), segment.rstrip(b"\0")
+                if position > len(blob) or size > len(blob) - position:
+                    if name in (b"__text", b"__fips_hmacs"):
+                        raise ValueError("crypto code or integrity section outside the file")
+                if name == b"__text" and segment in (b"__TEXT", b"__TEXT_EXEC") and code is None:
+                    code = (position, size, address)
+                if name == b"__fips_hmacs":
+                    if integrity is not None or size != 32:
+                        raise ValueError("source provider must have one 32-byte POST integrity field")
+                    integrity = position
+        offset += length
+    if code is None or integrity is None or not code[1] or code[2] - parsed["base"] != code[0] or \
+        code[0] <= integrity < code[0] + code[1]:
+        raise ValueError("invalid source provider POST mapping")
+    expected = hmac.digest(b"\0", blob[code[0]:code[0] + code[1]], "sha256")
+    if not hmac.compare_digest(blob[integrity:integrity + 32], expected):
+        raise ValueError("source provider POST integrity field is not sealed for these instructions")
+    return {"hmac_sha256": expected.hex(), "code_bytes": code[1], "runtime_post_observed": False}
 
 
 def verify_strip(original, stripped):
@@ -150,7 +187,7 @@ action = "exit"
 def main():
     parser = argparse.ArgumentParser(description="Stage firmware-native GPU and source-only XNU bring-up; never installs or claims iOS")
     parser.add_argument("--kernel", required=True, type=Path)
-    parser.add_argument("--kernel-sha256", default=NATIVE_KERNEL_SHA256)
+    parser.add_argument("--kernel-sha256", required=True)
     parser.add_argument("--menu-tree", required=True, type=Path)
     parser.add_argument("--gpu", required=True, type=Path)
     parser.add_argument("--strip", default="/usr/bin/strip")
@@ -161,6 +198,7 @@ def main():
     if hashlib.sha256(original).hexdigest() != args.kernel_sha256:
         raise ValueError("native kernel does not match the explicit source-build hash")
     contract(original)
+    crypto = crypto_contract(original)
     if args.out.exists():
         raise ValueError("output must be a new directory, not an existing ESP or installation")
     with tempfile.TemporaryDirectory(prefix="lumia-native-kernel-") as temporary:
@@ -168,6 +206,8 @@ def main():
         subprocess.run([args.strip, "-S", "-o", str(lean), str(args.kernel)], check=True)
         stripped = lean.read_bytes()
     checked, symbols = verify_strip(original, stripped)
+    if crypto_contract(stripped) != crypto:
+        raise ValueError("debug stripping changed the source provider integrity contract")
     output = args.out.resolve()
     files = {
         "EFI/UniXNU/UniXNU.efi": (args.menu_tree / "EFI/UniXNU/UniXNU.efi").read_bytes(),
@@ -194,6 +234,7 @@ def main():
         "external_symbol_values_preserved": symbols, "merged_kernel_qualification_bypassed": False,
         "root_filesystem_included": False, "ios_userspace_included": False, "handset_boot_observed": False,
         "exposed_boot_cpu_affinity": 0, "secondary_cpu_conduit_qualified": False,
+        "source_crypto_integrity_verified": True, "source_crypto": crypto,
         "gpu_frame_observed": False, "files": {}}
     for destination in sorted(output.rglob("*")):
         if destination.is_file():
