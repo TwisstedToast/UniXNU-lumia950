@@ -35,11 +35,13 @@ struct Device {
     bool readOnly = false;
     bool managedSupply = false;
     bool varyQualifiedVoltage = false;
+    bool handsetCurve = false;
     u8 managedMode = 0x40;
     u32 settleAfterUs = 0;
     u32 sends = 0;
     u32 pendingMessage = 0;
     u32 lowerAfterUs = 0;
+    u32 loseReadyAfterUs = 0;
     Device()
     {
         registers[4] = 0x1c; registers[5] = 9;
@@ -86,9 +88,16 @@ struct Device {
             device.registers[0x45] = device.managedMode;
             device.registers[0x46] = 0x80;
             device.registers[8] = device.neverReady ? 0 : 0x83;
+            if (device.handsetCurve) {
+                device.registers[0x41] = device.delays <= 1000 ? 150 : 143;
+                device.registers[8] = device.neverReady ? 0 : 0x81;
+            }
         }
         if (device.lowerAfterUs && device.delays >= device.lowerAfterUs) {
             device.registers[0x41] = 124;
+        }
+        if (device.loseReadyAfterUs && device.delays >= device.loseReadyAfterUs) {
+            device.registers[8] = 0;
         }
     }
     spmi::Io io() { return {this, read, write, barrier, delay}; }
@@ -164,10 +173,10 @@ void testClockSupplyHandoff()
     expect(spmi::recheckGraphicsRail(bus, handoff.rail, 100) == spmi::Result::Ok &&
         handoff.rail.stableSamples == pinned::kSupplySamples + 1,
         "later domain transitions can revalidate the same rail without writing it");
-    device.registers[0x41] = 124;
+    device.registers[8] = 0;
     expect(spmi::recheckGraphicsRail(bus, handoff.rail, 100) == spmi::Result::Unqualified &&
         !handoff.rail.ready && handoff.rail.pinned && !device.writes,
-        "a later voltage drop invalidates GPU access without fighting the voltage owner");
+        "loss of regulator readiness invalidates GPU access without fighting the voltage owner");
     const u32 failedCommands = device.commands;
     expect(spmi::recheckGraphicsRail(bus, handoff.rail, 100) == spmi::Result::NotReady &&
         device.commands == failedCommands, "invalidated observations cannot silently requalify");
@@ -176,7 +185,7 @@ void testClockSupplyHandoff()
         failed.readOnly = true;
         failed.managedSupply = true;
         if (mutation == 0) { failed.missingAck = true; }
-        if (mutation == 1) { failed.lowerAfterUs = 7750; }
+        if (mutation == 1) { failed.loseReadyAfterUs = 7750; }
         if (mutation == 2) { failed.registers[0x45] = 1; }
         if (mutation == 3) { failed.neverReady = true; }
         if (mutation == 4) { failed.managedSupply = false; }
@@ -195,8 +204,8 @@ void testClockSupplyHandoff()
             "RPM response waiting and supply settling both remain bounded");
         if (mutation == 1) {
             expect(failedHandoff.phase == pinned::Phase::Settle && failedHandoff.rail.pinned &&
-                failedHandoff.rail.stableSamples == 30 && failedHandoff.rail.final.microvolts == 700000,
-                "the photographed 30-good-then-700mV pattern stops immediately with its real snapshot");
+                failedHandoff.rail.stableSamples == 30 && !(failedHandoff.rail.final.status & 0x80),
+                "loss of VREG_OK after 30 ready snapshots stops immediately with its real status");
         }
         const u32 finishedCommands = failed.commands;
         expect(pinned::prepare(failedHandoff, failedBus, failedSession, true) == pinned::Result::NotReady &&
@@ -273,6 +282,47 @@ void testClockSupplyHandoff()
     expect(spmi::verifyGraphicsRail(fixedBus, fixedRail, 64, 250, 10000) == spmi::Result::Unqualified &&
         fixedRail.stableSamples == 30 && fixedRail.final.microvolts == 700000 && fixed.writes == 3,
         "the old direct-supply API still reproduces the failed v2 handset experiment without reapplication");
+    Device measured;
+    measured.readOnly = true;
+    measured.managedSupply = true;
+    measured.clockAcknowledged = true;
+    measured.handsetCurve = true;
+    spmi::Bus measuredBus = {};
+    spmi::ObservedRail legacy = {};
+    spmi::bind(measuredBus, measured.io(), true, true);
+    expect(spmi::awaitGraphicsRail(measuredBus, legacy, 64, 256, 250, 10000) == spmi::Result::TimedOut &&
+        legacy.samples == 256 && !legacy.stableSamples && legacy.minimumMicrovolts == 795000 &&
+        legacy.maximumMicrovolts == 830000 && !measured.writes && measuredBus.state == spmi::State::Ready,
+        "the photographed v3 result is the fixed 980mV policy timing out after successful PMIC reads");
+    Device managed;
+    managed.readOnly = true;
+    managed.managedSupply = true;
+    managed.handsetCurve = true;
+    spmi::Bus managedBus = {};
+    rpm::Session managedSession = {};
+    pinned::Handoff managedHandoff = {};
+    spmi::bind(managedBus, managed.io(), true, true);
+    rpm::bindSession(managedSession, managed.transport(), 0x41810000, true);
+    expect(pinned::prepare(managedHandoff, managedBus, managedSession, true) == pinned::Result::Ok &&
+        managedHandoff.rail.rpmManaged && managedHandoff.rail.stableSamples == 64 &&
+        managedHandoff.rail.minimumMicrovolts == 795000 && managedHandoff.rail.maximumMicrovolts == 830000 &&
+        managedHandoff.rail.initial.microvolts == 830000 && managedHandoff.rail.final.microvolts == 795000 &&
+        managed.sends == 1 && !managed.writes,
+        "the separate OEM-managed policy accepts regulator-ready after the exact correlated graphics vote without fixed-voltage programming");
+    for (u32 mutation = 0; mutation < 6; ++mutation) {
+        spmi::RpmSupplyContract contract = {rpm::kGraphicsParent, 300000, true, true, true};
+        if (mutation == 0) { contract.clock.type ^= 1; }
+        if (mutation == 1) { contract.clock.id = 0; }
+        if (mutation == 2) { contract.kilohertz = 19200; }
+        if (mutation == 3) { contract.correlatedAck = false; }
+        if (mutation == 4) { contract.exclusiveColdGpu = false; }
+        if (mutation == 5) { contract.oemPolicySelected = false; }
+        spmi::ObservedRail refused = {};
+        const u32 commands = managed.commands;
+        expect(spmi::awaitManagedGraphicsRail(managedBus, refused, contract, 64, 256, 250, 10000) ==
+            spmi::Result::Unqualified && managed.commands == commands && !refused.rpmManaged && !refused.ready,
+            "an unknown clock rate missing ACK or unselected OEM policy cannot opt into managed voltage policy");
+    }
 }
 }
 

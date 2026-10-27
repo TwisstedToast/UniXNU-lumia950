@@ -2,6 +2,7 @@
 #define NATIVE_ADRENO418_SPMI_CORE_H
 
 #include "AdrenoTypes.h"
+#include "RpmCore.h"
 
 namespace adreno {
 namespace spmi {
@@ -58,6 +59,14 @@ struct ObservedRail {
     u32 stableSamples;
     u32 minimumMicrovolts;
     u32 maximumMicrovolts;
+    bool rpmManaged;
+};
+struct RpmSupplyContract {
+    rpm::Resource clock;
+    u32 kilohertz;
+    bool correlatedAck;
+    bool exclusiveColdGpu;
+    bool oemPolicySelected;
 };
 
 Result bind(Bus &bus, const Io &io, bool firmwareExited, bool exclusiveChannel);
@@ -69,6 +78,9 @@ Result verifyGraphicsRail(Bus &bus, Rail &rail, u32 samples, u32 delayUs, u32 po
 bool graphicsReadCommand(u32 offset, u32 command);
 bool knownGraphicsPolicy(const RailSnapshot &snapshot);
 Result awaitGraphicsRail(Bus &bus, ObservedRail &rail, u32 samples, u32 attempts, u32 delayUs, u32 polls);
+bool validRpmSupplyContract(const RpmSupplyContract &contract);
+Result awaitManagedGraphicsRail(Bus &bus, ObservedRail &rail, const RpmSupplyContract &contract,
+                               u32 samples, u32 attempts, u32 delayUs, u32 polls);
 Result recheckGraphicsRail(Bus &bus, ObservedRail &rail, u32 polls);
 const char *resultName(Result result);
 

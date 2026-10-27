@@ -104,7 +104,7 @@ void NativeGpuProgress(const ProbeFramebuffer &framebuffer, const char *stage)
     readPower(registers, &observed);
     ProbeFillRectangle(&framebuffer, 0, 0, framebuffer.width, framebuffer.height, 0);
     Line(framebuffer, 0, result.complete ? "NATIVE GPU HARDWARE INITIALIZED" : "NATIVE GPU ACTIVATION STOPPED", color);
-    Line(framebuffer, 1, "NO WINDOWS OR FIRMWARE CALLS", color);
+    Line(framebuffer, 1, "NO WINDOWS OR UEFI SERVICES", color);
     Line(framebuffer, 2, nativeGpuStage, color);
     Line(framebuffer, 3, spmi::resultName(handoff.supply), color);
     Number(framebuffer, 4, "RAIL UV", handoff.rail.final.microvolts, color);
@@ -152,7 +152,7 @@ void NativeGpuProgress(const ProbeFramebuffer &framebuffer, const char *stage)
     Number(framebuffer, 41, "ABORT ESR", native_mmio_esr, color);
     Number(framebuffer, 42, "ABORT FAR", native_mmio_far, color);
     Number(framebuffer, 43, "ABORT ELR", native_mmio_elr, color);
-    Number(framebuffer, 44, "STABLE READS", handoff.rail.stableSamples, color);
+    Number(framebuffer, 44, "QUALIFIED READS", handoff.rail.stableSamples, color);
     Number(framebuffer, 45, "CLK REQ KHZ", pinned::kGraphicsKHz, color);
     Number(framebuffer, 46, "RAIL READS", handoff.rail.samples, color);
     Number(framebuffer, 47, "RAIL MIN UV", handoff.rail.minimumMicrovolts, color);
@@ -194,7 +194,8 @@ void NativeGpuProgress(const ProbeFramebuffer &framebuffer, const char *stage)
     }
     NativeGpuProgress(framebuffer, "ENABLING OXILI DOMAINS AND CLOCKS");
     const power::PinnedDependencies dependencies = {result.handoff.rail.final.microvolts,
-        pinned::kGraphicsKHz, result.handoff.rail.ready, true, true, true};
+        pinned::kGraphicsKHz, result.handoff.rail.ready, result.handoff.clock == rpm::Result::Ok,
+        true, true, result.handoff.rail.rpmManaged};
     result.powerResult = power::startPinned(result.power, registers, dependencies, 10000);
     if (result.powerResult != power::Result::Ok) { NativeGpuResultScreen(framebuffer, result); }
     NativeGpuProgress(framebuffer, "VERIFYING SUPPLY BEFORE GPU ACCESS");

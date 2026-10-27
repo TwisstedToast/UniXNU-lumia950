@@ -208,7 +208,7 @@ Result startPinned(Controller &controller, const RegisterIo &io,
     if (!dependencies.exclusiveHardware || !dependencies.observedRailReady ||
         !dependencies.clockAcknowledged || !dependencies.inheritedBusesUntouched ||
         dependencies.graphicsKHz != lumia950::kBootGpuHz / 1000 ||
-        dependencies.graphicsMicrovolts < lumia950::kMinimumGpuMicrovolts ||
+        dependencies.graphicsMicrovolts < (dependencies.rpmManagedSupply ? 350000u : lumia950::kFixedGpuMicrovolts) ||
         dependencies.graphicsMicrovolts > lumia950::kMaximumGpuMicrovolts) { return Result::Unqualified; }
     if (!io.read || !io.write || !io.barrier || !io.delayUs || !validBudget(mmioPolls, 1)) {
         return Result::Invalid;

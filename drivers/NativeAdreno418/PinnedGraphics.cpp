@@ -23,7 +23,9 @@ Result prepare(Handoff &handoff, spmi::Bus &bus, rpm::Session &session, bool exc
     handoff.clock = rpm::transact(session, rpm::Set::Active, rpm::kGraphicsParent, &rate, 1, 10000, 10);
     if (handoff.clock != rpm::Result::Ok) { return Result::ClockFailed; }
     handoff.phase = Phase::Settle;
-    handoff.supply = spmi::awaitGraphicsRail(bus, handoff.rail, kSupplySamples,
+    const spmi::RpmSupplyContract contract = {rpm::kGraphicsParent, kGraphicsKHz,
+        handoff.clock == rpm::Result::Ok && session.state == rpm::State::Ready, exclusiveColdGpu, true};
+    handoff.supply = spmi::awaitManagedGraphicsRail(bus, handoff.rail, contract, kSupplySamples,
         kSupplyAttempts, kSupplySampleDelayUs, 10000);
     if (handoff.supply != spmi::Result::Ok) { return Result::SupplyFailed; }
     handoff.phase = Phase::Ready;
@@ -36,7 +38,7 @@ const char *phaseName(Phase phase)
     case Phase::Empty: return "GRAPHICS HANDOFF NOT STARTED";
     case Phase::InspectSupply: return "CHECKING GRAPHICS SUPPLY POLICY";
     case Phase::Clock: return "NATIVE 300MHZ GRAPHICS CLOCK REQUEST";
-    case Phase::Settle: return "OBSERVING SUPPLY AFTER 300MHZ ACK";
+    case Phase::Settle: return "VERIFYING RPM-MANAGED VREG READY";
     case Phase::Ready: return "CLOCK ACK AND OBSERVED SUPPLY READY";
     }
     return "UNKNOWN GRAPHICS HANDOFF STAGE";

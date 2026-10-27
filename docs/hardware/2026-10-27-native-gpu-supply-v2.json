@@ -65,7 +65,8 @@
     "sample_delay_microseconds": 250,
     "direct_pmic_writes_available_in_native_bridge": false,
     "actual_gpu_frequency_measured": false,
-    "handset_result_observed": false
+    "handset_result_observed": true,
+    "result_reference": "2026-10-27-native-gpu-supply-v3.json"
   },
   "not_established": {
     "gpu_power_on": true,

@@ -77,7 +77,7 @@ Its steps are:
   native RPM channel that passed the earlier handset handshake.
 - Use a bounded native SPMI V1/channel-0 implementation, not retained firmware
   pointers. Require the expected FTSMPS2p5 peripheral at PMI8994 USID 3, `0x1700`.
-  In v3 the actual native bridge permits only the seven exact regulator **read**
+  Since v3 the actual native bridge permits only the seven exact regulator **read**
   commands: type, subtype, status, range, selector, mode and enable. The controller
   command register must still be written to execute a read, but PMIC write opcodes,
   the controller write-data register and all foreign USIDs/peripherals are refused.
@@ -94,18 +94,33 @@ Its steps are:
   clock-first/direct-supply run then passed **30 unchanged adequate-supply checks**
   before also reading 700 mV, while HPM and enable remained asserted. The target
   written was 980 mV; the exact earlier successful selector is not photographed.
-  Reordering
-  alone therefore did not solve the voltage-control problem. These photographs
+  Reordering alone therefore did not solve the voltage-control problem. These photographs
   do not identify the writer, prove a periodic governor or qualify an RPM supply
   resource. Direct programming is not repeated to fight the observed change.
-- After the v3 ACK, passively wait for **64 consecutive qualified snapshots**, spaced
+- The v3 fixed-voltage observer required **980000 microvolts** even though the
+  clock and voltage were being delegated to RPM. The handset completed **256
+  successful regulator snapshots**, showing AUTO, enabled/ready and selector-derived
+  **795000–830000 microvolts**. Its `TIMED OUT` meant the fixed-980mV condition never
+  qualified, not a failed SPMI transfer. Zero qualified reads did not prove electrical
+  instability. Linux's fixed min=max 980mV setting is not a per-frequency/fuse minimum.
+- **V4 explicitly selects an experimental OEM RPM-managed policy**, distinct from
+  the preserved fixed-980mV direct policy. It requires the exact dedicated graphics
+  rate, correlated ACK, cold exclusive GPU and policy selection before observing
+  regulator readiness. The matching ACPI graphics P-state supplies a clock rate,
+  not a microvolt target; the OEM PEP maps it to `clk2/1`. Its local `rail_gfx`
+  callback does not reveal a separate PMIC voltage program. Delegating voltage
+  choice to RPM is an **API-policy inference**, not a recovered fused voltage table
+  or proof of every remote dependency. V4 states that limitation before Volume Up.
+- Passively wait for **64 consecutive qualified snapshots**, spaced
   **250 microseconds apart**, with at most **256 attempts** and one shared 10000-poll
-  SPMI budget. The GPU-access floor stays **980000 microvolts**, with the same
-  1355000-microvolt ceiling and expected range/identity. Only AUTO (`0x40`) or HPM
+  SPMI budget. The RPM-managed policy does **not** apply the fixed 980mV condition.
+  It checks the expected identity and valid range-0 voltage encoding, not an invented
+  new per-frequency voltage floor. **350000–1355000 microvolts is the regulator's
+  encoding range, not a claimed safe 300MHz operating range.** Only AUTO (`0x40`) or HPM
   (`0x80`), exact software enable (`0x80`) and ready status qualify. Selector changes
-  within that qualified band are allowed; unknown pin/mode bits are not.
-  Initial undervoltage can settle within the finite window. Once qualification
-  starts, a drop below the guard or loss of readiness stops immediately: no new
+  are allowed under the explicitly selected RPM policy; unknown pin/mode bits are not.
+  Initial missing readiness can settle within the finite window. Once qualification
+  starts, an invalid encoding, unknown policy or loss of readiness stops: no new
   voltage write, clock request or silent requalification is attempted. A missing
   clock ACK prevents observation from qualifying the handoff at all.
 - Enable the OxiLi domains, retention and three branches using bounded polls.
@@ -133,11 +148,15 @@ This remains an experimental configuration-access path, not proof of permanent
 remote voltage ownership, voltage/frequency electrical qualification or DMA/rendering.
 The ACPI exit sequence also contains domain transitions and P-state restoration;
 its rate table alone does **not** prove that a clock vote establishes adequate
-voltage before those transitions. If the guarded supply does not appear, this
-test stops before domain/GPU access rather than relaxing the guard.
+voltage before those transitions. V4 deliberately changes the **authority model**
+rather than forcing the voltage or claiming a newly verified numerical minimum.
+It can still fail or fault on the handset. This configuration-only contract must
+not be treated as a DMA, shader-load or electrical-margin qualification.
 The first handset stop is in `docs/hardware/2026-10-27-native-gpu-supply.json`;
 the failed v2 stability experiment is recorded separately in
-`docs/hardware/2026-10-27-native-gpu-supply-v2.json`. The source-pinned startup table
+`docs/hardware/2026-10-27-native-gpu-supply-v2.json`. The v3 observation and explicit
+v4 policy/limits are in `docs/hardware/2026-10-27-native-gpu-supply-v3.json` and
+`docs/hardware/2026-10-27-rpm-managed-policy.json`. The source-pinned startup table
 is in `docs/hardware/2026-10-27-graphics-startup-profile.json` and is checked against
 both full ACPI sources by `scripts/check-graphics-profile.py` locally and in CI.
 All numbers on this diagnostic screen are hexadecimal. `PMIC TYPE/SUB` packs

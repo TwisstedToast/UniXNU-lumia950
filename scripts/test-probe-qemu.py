@@ -147,7 +147,7 @@ def main() -> None:
         "rpm": ["LUMIA 950 | NATIVE RPM HANDOFF v3",
                 "PLATFORM_UNSUPPORTED: no SMEM, translation or MMIO access.",
                 "RPM HANDOFF REFUSED - firmware retained.", "Returning to firmware."],
-        "native-gpu": ["LUMIA 950 | NATIVE GPU POWER v3",
+        "native-gpu": ["LUMIA 950 | NATIVE GPU POWER v4",
                        "PLATFORM_UNSUPPORTED: no SMEM, translation or MMIO access.",
                        "RPM HANDOFF REFUSED - firmware retained.", "Returning to firmware."],
         "guard": ["NATIVE MMIO GUARD PASSED"],

@@ -98,7 +98,7 @@ constexpr adreno::u32 kA4xxGeneration = 0x04;
 // qcom,gpu-pwrlevels: the fastest level and the one the device tree boots at.
 constexpr adreno::u32 kMaxGpuHz = 600000000;
 constexpr adreno::u32 kBootGpuHz = 300000000;
-constexpr adreno::u32 kMinimumGpuMicrovolts = 980000;
+constexpr adreno::u32 kFixedGpuMicrovolts = 980000;
 constexpr adreno::u32 kMaximumGpuMicrovolts = 1355000;
 
 // The GPU's IOMMU. Same tree, arch/arm/boot/dts/qcom/msm-iommu-v1.dtsi:

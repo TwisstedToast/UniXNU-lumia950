@@ -45,6 +45,7 @@ struct PinnedDependencies {
     bool clockAcknowledged;
     bool inheritedBusesUntouched;
     bool exclusiveHardware;
+    bool rpmManagedSupply = false;
 };
 
 bool validPlan(const Plan &plan, const rpm::VoteBank &bank);

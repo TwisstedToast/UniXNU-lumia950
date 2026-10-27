@@ -1,0 +1,43 @@
+{
+  "schema": "lumia950-experimental-power-policy-v1",
+  "date": "2026-10-27",
+  "scope": "Standalone post-EBS GPU configuration-access experiment, not a DMA or shader workload qualification",
+  "source_facts": {
+    "graphics_rate_profile": "2026-10-27-graphics-startup-profile.json",
+    "clock_descriptor": "2026-10-27-pep-gpu-reference.json",
+    "oem_acpi_active_graphics_state_requests_clk_oxili_not_a_fixed_microvolt_value": true,
+    "oem_pep_sha256": "fda58326c3c92166dd1ac3ddd735de6332f0a1ed3f0c4d0ff3ac6d99e0a76120",
+    "oem_pep_graphics_clock_resource": {"definition_va": "0x14012bab8", "remote_descriptor_va": "0x140110450", "type": "clk2", "id": 1, "units": "KHz"},
+    "oem_pep_graphics_rail_local_callback": {"va": "0x140052af0", "behavior": "Returns requested state without a PMIC write; does not reveal the complete remote voltage policy"},
+    "oem_pep_gfx_mode_array": {"va": "0x140173c78", "behavior": "Runtime-populated pointer, not a static table of fused voltage minima"},
+    "linux_fixed_supply_reference": {
+      "url": "https://github.com/torvalds/linux/blob/v6.12/arch/arm64/boot/dts/qcom/msm8994-msft-lumia-octagon.dtsi#L543",
+      "sha256": "a59670b49e10b68b2034eab0a4a5ed1466d25a4e010bef7437f43224e5e86dd2",
+      "minimum_and_maximum_microvolts": 980000,
+      "contains_per_frequency_or_per_fuse_voltage_minimum_table": false
+    }
+  },
+  "policy_decision": {
+    "kind": "Explicit experimental delegation of voltage choice to the existing OEM RPM clock policy, not an inferred numerical voltage minimum",
+    "enabled_only_after_measured_platform_checks_and_user_VolumeUp_confirmation": true,
+    "requires_exact_clk2_id1_active_300000_khz_correlated_ack": true,
+    "requires_exclusive_cold_gpu_and_explicit_policy_selection": true,
+    "requires_64_consecutive_ready_snapshots_in_256_attempts": true,
+    "requires_expected_pmi8994_identity_range0_auto_or_hpm_and_software_enable": true,
+    "allows_firmware_chosen_voltage_below_fixed_980mv": true,
+    "350000_to_1355000_is_regulator_encoding_range_not_a_claimed_300mhz_safe_voltage_range": true,
+    "fixed_980mv_direct_policy_is_unchanged_and_separate": true,
+    "native_bridge_permits_pmic_write_opcodes_or_write_data": false,
+    "loss_of_regulator_readiness_or_unknown_policy_stops_without_retry": true,
+    "rechecks_regulator_readiness_after_domains_and_after_hardware_initialization": true
+  },
+  "qualification_limits": {
+    "api_delegation_matches_oem_rate_control_pattern": "Inference from the source facts, not proof of every remote dependency",
+    "complete_rpm_voltage_dependency_graph_recovered": false,
+    "exact_rpm_fused_minimum_voltage_at_300mhz_known": false,
+    "analog_voltage_or_electrical_margin_measured": false,
+    "clock_ack_alone_proves_correct_frequency_or_voltage": false,
+    "handset_domain_activation_with_this_policy_observed": false,
+    "dma_or_shader_load_authorized_by_this_contract": false
+  }
+}

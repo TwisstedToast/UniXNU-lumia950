@@ -58,7 +58,7 @@ bool voltage(RailSnapshot &snapshot)
 
 bool ready(const RailSnapshot &snapshot)
 {
-    return snapshot.microvolts >= lumia950::kMinimumGpuMicrovolts &&
+    return snapshot.microvolts >= lumia950::kFixedGpuMicrovolts &&
         snapshot.microvolts <= lumia950::kMaximumGpuMicrovolts &&
         snapshot.range == 0 && (snapshot.enable & 0x80) &&
         (snapshot.status & 0x80) && (snapshot.mode & 0x80);
@@ -77,9 +77,10 @@ Result inspect(Bus &bus, RailSnapshot &snapshot, u32 &remaining)
     return voltage(snapshot) ? Result::Ok : Result::Unqualified;
 }
 
-bool observedReady(const RailSnapshot &snapshot)
+bool observedReady(const RailSnapshot &snapshot, bool rpmManaged)
 {
-    return knownGraphicsPolicy(snapshot) && snapshot.microvolts >= lumia950::kMinimumGpuMicrovolts &&
+    return knownGraphicsPolicy(snapshot) && snapshot.microvolts >=
+        (rpmManaged ? 350000u : lumia950::kFixedGpuMicrovolts) &&
         snapshot.microvolts <= lumia950::kMaximumGpuMicrovolts && snapshot.enable == 0x80 &&
         (snapshot.status & 0x80) && (snapshot.mode == 0x40 || snapshot.mode == 0x80);
 }
@@ -200,18 +201,22 @@ bool knownGraphicsPolicy(const RailSnapshot &snapshot)
         (snapshot.enable == 0 || snapshot.enable == 0x80);
 }
 
-Result awaitGraphicsRail(Bus &bus, ObservedRail &rail, u32 samples, u32 attempts, u32 delayUs, u32 polls)
+namespace {
+
+Result observeWindow(Bus &bus, ObservedRail &rail, bool rpmManaged,
+                     u32 samples, u32 attempts, u32 delayUs, u32 polls)
 {
     if (bus.state != State::Ready || rail.pinned || rail.ready) { return Result::NotReady; }
     if (!samples || attempts < samples || attempts > 256 || !delayUs || delayUs > 1000 ||
         !polls || polls > 100000 || static_cast<u64>(attempts) * delayUs > 250000 ||
         rail.samples || rail.stableSamples) { return Result::Invalid; }
     rail.pinned = true;
+    rail.rpmManaged = rpmManaged;
     for (u32 attempt = 0; attempt < attempts; ++attempt) {
         bus.io.delayUs(bus.io.context, delayUs);
         const Result result = observe(bus, rail, polls);
         if (result != Result::Ok) { return result; }
-        if (!observedReady(rail.final)) {
+        if (!observedReady(rail.final, rail.rpmManaged)) {
             if (rail.stableSamples || rail.final.microvolts > lumia950::kMaximumGpuMicrovolts) {
                 return Result::Unqualified;
             }
@@ -223,6 +228,27 @@ Result awaitGraphicsRail(Bus &bus, ObservedRail &rail, u32 samples, u32 attempts
     return Result::TimedOut;
 }
 
+}
+
+Result awaitGraphicsRail(Bus &bus, ObservedRail &rail, u32 samples, u32 attempts, u32 delayUs, u32 polls)
+{
+    return observeWindow(bus, rail, false, samples, attempts, delayUs, polls);
+}
+
+bool validRpmSupplyContract(const RpmSupplyContract &contract)
+{
+    return contract.clock.type == rpm::kGraphicsParent.type && contract.clock.id == rpm::kGraphicsParent.id &&
+        contract.kilohertz == lumia950::kBootGpuHz / 1000 && contract.correlatedAck &&
+        contract.exclusiveColdGpu && contract.oemPolicySelected;
+}
+
+Result awaitManagedGraphicsRail(Bus &bus, ObservedRail &rail, const RpmSupplyContract &contract,
+                               u32 samples, u32 attempts, u32 delayUs, u32 polls)
+{
+    if (!validRpmSupplyContract(contract)) { return Result::Unqualified; }
+    return observeWindow(bus, rail, true, samples, attempts, delayUs, polls);
+}
+
 Result recheckGraphicsRail(Bus &bus, ObservedRail &rail, u32 polls)
 {
     if (bus.state != State::Ready || !rail.pinned || !rail.ready) { return Result::NotReady; }
@@ -231,7 +257,7 @@ Result recheckGraphicsRail(Bus &bus, ObservedRail &rail, u32 polls)
     rail.ready = false;
     const Result result = observe(bus, rail, polls);
     if (result != Result::Ok) { return result; }
-    if (!observedReady(rail.final)) { return Result::Unqualified; }
+    if (!observedReady(rail.final, rail.rpmManaged)) { return Result::Unqualified; }
     ++rail.stableSamples;
     rail.ready = true;
     return Result::Ok;

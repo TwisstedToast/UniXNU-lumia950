@@ -486,6 +486,26 @@ void testPinnedPrerequisites()
     const u32 writes = device->writes;
     expect(power::startPinned(controller, device->io().registers, dependencies, 16) == power::Result::NotReady &&
         device->writes == writes, "the native pinned power sequence cannot be replayed");
+    auto managed = std::make_unique<Device>();
+    managed->votes = {2, 50000, 100000, 300000};
+    power::Controller managedController = {};
+    power::PinnedDependencies managedDependencies = {795000, 300000, true, true, true, true, true};
+    expect(power::startPinned(managedController, managed->io().registers, managedDependencies, 16) ==
+        power::Result::Ok && managed->powered() && !managed->gpuReads && !managed->smmuReads &&
+        !managed->memoryWrites && !managed->violation,
+        "OEM-managed voltage qualification is distinct from a fixed-980mV direct supply contract");
+    for (u32 mutation = 0; mutation < 4; ++mutation) {
+        auto refused = std::make_unique<Device>();
+        power::Controller refusedController = {};
+        power::PinnedDependencies unknown = managedDependencies;
+        if (mutation == 0) { unknown.clockAcknowledged = false; }
+        if (mutation == 1) { unknown.observedRailReady = false; }
+        if (mutation == 2) { unknown.graphicsMicrovolts = 345000; }
+        if (mutation == 3) { unknown.graphicsMicrovolts = 1360000; }
+        expect(power::startPinned(refusedController, refused->io().registers, unknown, 16) ==
+            power::Result::Unqualified && !refused->writes,
+            "managed policy does not bypass clock ACK regulator readiness or valid hardware encoding");
+    }
 }
 
 void testSuccess()

@@ -378,7 +378,7 @@ static EFI_STATUS Run(EFI_HANDLE image, EFI_SYSTEM_TABLE *systemTable)
     preflightStage = "PLATFORM";
     firmware->ConOut->ClearScreen(firmware->ConOut);
 #ifdef LUMIA_GPU_POWER_TEST
-    Print("LUMIA 950 | NATIVE GPU POWER v3\r\n");
+    Print("LUMIA 950 | NATIVE GPU POWER v4\r\n");
     Print("Post-EBS PMI8994 supply, dedicated clock, GPU power and hardware setup.\r\n");
     Print("No Windows. No shared-bus RPM changes. No DMA, rendered frame or iOS claim.\r\n");
 #else
@@ -531,7 +531,8 @@ static EFI_STATUS Run(EFI_HANDLE image, EFI_SYSTEM_TABLE *systemTable)
     Print("GPU POWER READY - Volume Up starts native GPU writes.\r\n");
     Print("PMIC observation only: no voltage, mode or enable register writes.\r\n");
     Print("Only clk2/1 receives the Microsoft startup profile of 300000 KHz.\r\n");
-    Print("GPU access still requires at least 980mV. Resources remain pinned until reset.\r\n");
+    Print("Experimental OEM RPM voltage policy: ACK plus regulator-ready, not fixed 980mV.\r\n");
+    Print("No independently verified fused voltage margin. Resources remain pinned until reset.\r\n");
 #else
     Print("RPM HANDOFF READY - Volume Up starts the native test.\r\n");
 #endif

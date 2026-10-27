@@ -76,7 +76,7 @@ def main():
     if profiles[0] != profiles[1] or profiles[0]["startup_khz"] != evidence["startup_khz"]:
         raise ValueError("original Microsoft and custom firmware startup profiles disagree")
     constants = (ROOT / "drivers/NativeAdreno418/BoardConstants.h").read_text()
-    expected = {"kBootGpuHz": 1000 * evidence["startup_khz"], "kMinimumGpuMicrovolts": 980000,
+    expected = {"kBootGpuHz": 1000 * evidence["startup_khz"], "kFixedGpuMicrovolts": 980000,
                 "kMaximumGpuMicrovolts": 1355000}
     for name, value in expected.items():
         if not re.search(rf'constexpr adreno::u32 {name}\s*=\s*{value};', constants):

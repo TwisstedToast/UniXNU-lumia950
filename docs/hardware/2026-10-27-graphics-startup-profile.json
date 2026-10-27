@@ -28,7 +28,8 @@
     "graphics_rate_is_documented": true,
     "rpm_clk2_id1_mapping_is_statically_verified": true,
     "rpm_ack_is_measured_frequency": false,
-    "minimum_980mv_gpu_access_guard_retained": true,
+    "fixed_980mv_direct_policy_preserved": true,
+    "fixed_980mv_is_proven_minimum_for_rpm_managed_300mhz": false,
     "clock_vote_alone_is_proven_to_establish_adequate_supply": false,
     "phase_order_or_voltage_ownership_fully_qualified": false,
     "shared_bus_or_dma_qualification_added": false

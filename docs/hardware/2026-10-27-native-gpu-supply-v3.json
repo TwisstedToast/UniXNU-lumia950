@@ -1,0 +1,72 @@
+{
+  "schema": "lumia950-handset-gpu-result-v1",
+  "date": "2026-10-27",
+  "evidence_kind": "User photograph of the actual post-ExitBootServices native v3 test; not an emulator result",
+  "photograph": {
+    "filename": "PXL_20261027_135714024.jpg",
+    "sha256": "4b3f462006a0c7e7cc8c438509b2039099cfed30a400ba8b4882e4f21a7ffb23",
+    "redistributed": false
+  },
+  "installed_gpu_efi_sha256": "f245bb839fe2fb64de1516c08e4c036f16b67d6959d5176a482385e8f8481f89",
+  "final_heading": "NATIVE GPU ACTIVATION STOPPED",
+  "final_stage": "OBSERVING SUPPLY AFTER 300MHZ ACK",
+  "supply_result": "TIMED OUT",
+  "native_clock_result": "OK",
+  "raw_hex": {
+    "rail_microvolts": "000c2178",
+    "spmi_status": "00000001",
+    "spmi_version": "20000002",
+    "spmi_last_command": "08317460",
+    "power_result": "00000003",
+    "gx_gdscr": "00282001",
+    "cx_gdscr": "00282001",
+    "core_cbcr": "80000ff0",
+    "ahb_cbcr": "80008000",
+    "timer_cbcr": "80000000",
+    "pmic_type_subtype": "00001c09",
+    "rail_initial_configuration": "00964080",
+    "rail_final_configuration": "008f4080",
+    "rail_initial_status": "00000081",
+    "rail_final_status": "00000081",
+    "abort_esr": "00000000",
+    "abort_far": "00000000",
+    "abort_elr": "00000000",
+    "stable_reads": "00000000",
+    "clock_requested_khz": "000493e0",
+    "rail_reads": "00000100",
+    "rail_minimum_microvolts": "000c2178",
+    "rail_maximum_microvolts": "000caa30"
+  },
+  "interpretation": {
+    "correlated_300000_khz_request_acknowledged": true,
+    "actual_gpu_frequency_measured": false,
+    "successful_complete_regulator_snapshots": 256,
+    "minimum_observation_delay_microseconds": 64000,
+    "observed_selector_microvolts": {"initial": 830000, "final": 795000, "minimum": 795000, "maximum": 830000},
+    "auto_mode_software_enable_and_ready_status_observed": true,
+    "the_v3_fixed_980mv_condition_never_qualified": true,
+    "reported_timeout_was_observation_window_expiry_not_spmi_transport_timeout": true,
+    "zero_stable_reads_proves_electrical_instability": false,
+    "980mv_is_proven_fused_minimum_for_this_300mhz_state": false,
+    "domains_remained_collapsed": true,
+    "unreached_gpu_and_smmu_zero_fields_are_not_register_observations": true
+  },
+  "next_test": {
+    "efi_sha256": "cbf5e99581338cacefd717c3200d174e74bf962885be2d5ddcaaed95a69b31ec",
+    "change": "Explicit experimental RPM-managed supply policy, separate from the unchanged fixed-980mV direct policy",
+    "policy_reference": "2026-10-27-rpm-managed-policy.json",
+    "forces_or_programs_a_lower_voltage": false,
+    "direct_pmic_register_writes_permitted": false,
+    "fixed_980mv_guard_applies_to_rpm_managed_policy": false,
+    "independent_fused_voltage_margin_verified": false,
+    "handset_result_observed": false
+  },
+  "not_established": {
+    "gpu_power_on": true,
+    "gpu_register_identity": true,
+    "gpu_command_completion": true,
+    "gpu_rendered_frame": true,
+    "60fps": true,
+    "handset_ios_boot": true
+  }
+}
