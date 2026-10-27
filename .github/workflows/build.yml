@@ -116,6 +116,15 @@ jobs:
           python3 scripts/test-xnu-build-flags.py --make-def work/clock-reference/MakeInc.def \
               --startup work/clock-reference/startup.c --bootstrap-patch unixnu/patches/xnu/source-corecrypto14-bootstrap.patch
 
+      - name: Check graphics startup against original and custom Lumia firmware tables
+        run: |
+          source=https://raw.githubusercontent.com/WOA-Project/Lumia950XLPkg/0e7e24adb2ac80672ade1e56f9b538d99941328f
+          mkdir -p work/graphics-reference/AcpiTables/8992/src
+          for table in DSDT_MSFT.asl DSDT.asl; do
+            curl -fsSL "$source/AcpiTables/8992/src/$table" -o "work/graphics-reference/AcpiTables/8992/src/$table"
+          done
+          python3 scripts/check-graphics-profile.py --firmware-root work/graphics-reference
+
       - name: The 16.x patch line has no holes
         # feeds.toml moves the build to xnu-8796.141.3, and UniXNU carries that line's patch
         # overlay. A skip must name a base patch and state why: an omission that outlives its

@@ -64,7 +64,7 @@ bool NativeSpmiRead(void *, u32 offset, u32 *value)
 
 bool NativeSpmiWrite(void *, u32 offset, u32 value)
 {
-    if (offset != spmi::kCommandOffset && offset != spmi::kWriteDataOffset) { return false; }
+    if (!spmi::graphicsReadCommand(offset, value)) { return false; }
     return NativeWrite(nullptr, spmi::kControllerPhysical + offset, value);
 }
 
@@ -152,9 +152,13 @@ void NativeGpuProgress(const ProbeFramebuffer &framebuffer, const char *stage)
     Number(framebuffer, 41, "ABORT ESR", native_mmio_esr, color);
     Number(framebuffer, 42, "ABORT FAR", native_mmio_far, color);
     Number(framebuffer, 43, "ABORT ELR", native_mmio_elr, color);
-    Number(framebuffer, 44, "STABLE RAIL SAMPLES", handoff.rail.stableSamples, color);
-    Line(framebuffer, 45, "NO SHADER FRAME OR IOS CLAIMED", color);
-    Line(framebuffer, 46, "RESOURCES PINNED - FORCE REBOOT", color);
+    Number(framebuffer, 44, "STABLE READS", handoff.rail.stableSamples, color);
+    Number(framebuffer, 45, "CLK REQ KHZ", pinned::kGraphicsKHz, color);
+    Number(framebuffer, 46, "RAIL READS", handoff.rail.samples, color);
+    Number(framebuffer, 47, "RAIL MIN UV", handoff.rail.minimumMicrovolts, color);
+    Number(framebuffer, 48, "RAIL MAX UV", handoff.rail.maximumMicrovolts, color);
+    Line(framebuffer, 49, "NO SHADER FRAME OR IOS CLAIMED", color);
+    Line(framebuffer, 50, "RESOURCES PINNED - FORCE REBOOT", color);
     Flush(framebuffer, 0, framebuffer.height);
     for (;;) { asm volatile("wfi"); }
 }
@@ -178,7 +182,7 @@ void NativeGpuProgress(const ProbeFramebuffer &framebuffer, const char *stage)
         ((initial.coreClock | initial.ahbClock | initial.timerClock) & kBranchEnable)) {
         NativeGpuResultScreen(framebuffer, result);
     }
-    NativeGpuProgress(framebuffer, "PREPARING FIXED CLOCK / SUPPLY HANDOFF");
+    NativeGpuProgress(framebuffer, "PREPARING RPM-MANAGED STARTUP PROFILE");
     const spmi::Io supplyIo = {nullptr, NativeSpmiRead, NativeSpmiWrite, NativeGpuBarrier, Delay};
     result.handoff.supply = spmi::bind(result.bus, supplyIo, true, true);
     if (result.handoff.supply != spmi::Result::Ok) { NativeGpuResultScreen(framebuffer, result); }
@@ -194,7 +198,7 @@ void NativeGpuProgress(const ProbeFramebuffer &framebuffer, const char *stage)
     result.powerResult = power::startPinned(result.power, registers, dependencies, 10000);
     if (result.powerResult != power::Result::Ok) { NativeGpuResultScreen(framebuffer, result); }
     NativeGpuProgress(framebuffer, "VERIFYING SUPPLY BEFORE GPU ACCESS");
-    result.handoff.supply = spmi::verifyGraphicsRail(result.bus, result.handoff.rail, 1, 0, 10000);
+    result.handoff.supply = spmi::recheckGraphicsRail(result.bus, result.handoff.rail, 10000);
     if (result.handoff.supply != spmi::Result::Ok) { NativeGpuResultScreen(framebuffer, result); }
     context.gpuAccessible = true;
     NativeGpuProgress(framebuffer, "READING REAL GPU HARDWARE");
@@ -207,7 +211,7 @@ void NativeGpuProgress(const ProbeFramebuffer &framebuffer, const char *stage)
     result.hardwareResult = initializeCommandHardware(result.hardware, registers, contract, 10000);
     if (result.hardwareResult != HardwareResult::Ok) { NativeGpuResultScreen(framebuffer, result); }
     NativeGpuProgress(framebuffer, "VERIFYING SUPPLY AFTER HARDWARE INIT");
-    result.handoff.supply = spmi::verifyGraphicsRail(result.bus, result.handoff.rail, 1, 0, 10000);
+    result.handoff.supply = spmi::recheckGraphicsRail(result.bus, result.handoff.rail, 10000);
     if (result.handoff.supply != spmi::Result::Ok) { NativeGpuResultScreen(framebuffer, result); }
     NativeGpuProgress(framebuffer, "INSPECTING INHERITED SMMU ROUTES");
     result.routeResult = smmu::inspectRoutes(result.routes, registers, {true, true, true});

@@ -1,0 +1,36 @@
+{
+  "schema": "lumia950-static-graphics-profile-v1",
+  "evidence_kind": "Matching original Microsoft and custom firmware ACPI constant tables; not a live voltage/frequency measurement",
+  "firmware_repository": "WOA-Project/Lumia950XLPkg",
+  "firmware_commit": "0e7e24adb2ac80672ade1e56f9b538d99941328f",
+  "sources": [
+    {
+      "path": "AcpiTables/8992/src/DSDT_MSFT.asl",
+      "sha256": "77bc2ee8e92bdc422ea6b3e7d9055c57237c96fc06b1cb489e1bc38291fdeb4f",
+      "url": "https://github.com/WOA-Project/Lumia950XLPkg/blob/0e7e24adb2ac80672ade1e56f9b538d99941328f/AcpiTables/8992/src/DSDT_MSFT.asl"
+    },
+    {
+      "path": "AcpiTables/8992/src/DSDT.asl",
+      "sha256": "c06765a52bff14a4ffa1465499373c3b6b7f11aa8e09f3046b4f5ace82f5a78b",
+      "url": "https://github.com/WOA-Project/Lumia950XLPkg/blob/0e7e24adb2ac80672ade1e56f9b538d99941328f/AcpiTables/8992/src/DSDT.asl"
+    }
+  ],
+  "resource": "/clk/oxili",
+  "units": "KHz",
+  "wake_pstate_set": 1,
+  "wake_khz": 19200,
+  "active_pstate_set": 2,
+  "active_rates_khz": [600000, 490000, 450000, 366000, 300000, 180000, 0],
+  "preload_prepare_abandon_index": 4,
+  "startup_khz": 300000,
+  "live_rpm_descriptor_reference": "2026-10-27-pep-gpu-reference.json",
+  "scope": {
+    "graphics_rate_is_documented": true,
+    "rpm_clk2_id1_mapping_is_statically_verified": true,
+    "rpm_ack_is_measured_frequency": false,
+    "minimum_980mv_gpu_access_guard_retained": true,
+    "clock_vote_alone_is_proven_to_establish_adequate_supply": false,
+    "phase_order_or_voltage_ownership_fully_qualified": false,
+    "shared_bus_or_dma_qualification_added": false
+  }
+}

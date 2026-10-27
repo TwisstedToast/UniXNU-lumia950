@@ -457,6 +457,37 @@ struct Device {
     BatchResult run() { return runGpuBatch(batch, io(), buffers, plan, budget); }
 };
 
+void testPinnedPrerequisites()
+{
+    for (u32 mutation = 0; mutation < 8; ++mutation) {
+        auto device = std::make_unique<Device>();
+        power::Controller controller = {};
+        power::PinnedDependencies dependencies = {980000, 300000, true, true, true, true};
+        if (mutation == 0) { dependencies.observedRailReady = false; }
+        if (mutation == 1) { dependencies.clockAcknowledged = false; }
+        if (mutation == 2) { dependencies.inheritedBusesUntouched = false; }
+        if (mutation == 3) { dependencies.exclusiveHardware = false; }
+        if (mutation == 4) { dependencies.graphicsKHz = 19200; }
+        if (mutation == 5) { dependencies.graphicsKHz = 600000; }
+        if (mutation == 6) { dependencies.graphicsMicrovolts = 975000; }
+        if (mutation == 7) { dependencies.graphicsMicrovolts = 1360000; }
+        expect(power::startPinned(controller, device->io().registers, dependencies, 16) ==
+            power::Result::Unqualified && !device->writes && !device->gpuReads && !device->smmuReads,
+            "the pinned path rejects a stale rail wake clock other rate or unqualified supply before MMIO writes");
+    }
+    auto device = std::make_unique<Device>();
+    device->votes = {2, 50000, 100000, 300000};
+    power::Controller controller = {};
+    const power::PinnedDependencies dependencies = {980000, 300000, true, true, true, true};
+    expect(power::startPinned(controller, device->io().registers, dependencies, 16) == power::Result::Ok &&
+        controller.state == power::State::Ready && device->powered() && !device->violation &&
+        !device->gpuReads && !device->smmuReads && !device->memoryWrites,
+        "qualified observed power and the exact startup rate enable domains and branches without GPU or DMA access");
+    const u32 writes = device->writes;
+    expect(power::startPinned(controller, device->io().registers, dependencies, 16) == power::Result::NotReady &&
+        device->writes == writes, "the native pinned power sequence cannot be replayed");
+}
+
 void testSuccess()
 {
     auto device = std::make_unique<Device>();
@@ -607,6 +638,7 @@ void testFailures()
 
 int main()
 {
+    testPinnedPrerequisites();
     testSuccess();
     testQualification();
     testFailures();

@@ -77,25 +77,37 @@ Its steps are:
   native RPM channel that passed the earlier handset handshake.
 - Use a bounded native SPMI V1/channel-0 implementation, not retained firmware
   pointers. Require the expected FTSMPS2p5 peripheral at PMI8994 USID 3, `0x1700`.
-  The direct graphics rail can be raised/enabled at **980000 microvolts**, the
-  static Lumia board constraint. Existing adequate higher voltage is retained;
-  unknown regulator/range/pin policy is refused. Only `0x1741`, `0x1745`, `0x1746`
-  accept narrowly allowed native writes. No other PMIC rail is writable here.
-- Request **clk2, ID 1, KHz=19200** through a correlated native RPM transaction
-  **before** establishing the direct graphics voltage.
+  In v3 the actual native bridge permits only the seven exact regulator **read**
+  commands: type, subtype, status, range, selector, mode and enable. The controller
+  command register must still be written to execute a read, but PMIC write opcodes,
+  the controller write-data register and all foreign USIDs/peripherals are refused.
+  Neither voltage selector, mode nor enable is written by this native path.
+- Request **clk2, ID 1, KHz=300000** once through a correlated native RPM transaction.
+  Both the original Microsoft and custom matching-firmware ACPI select graphics
+  **PSTATE_SET 2, state 4 (300 MHz)** for PRELOAD, PREPARE and ABANDON. The previous
+  19.2 MHz request belongs to a separate wake/on-off profile, not that active
+  startup profile. This is a source-backed rate request, not a measured GPU rate.
   This dedicated graphics resource is used only after exclusive cold-GPU ownership;
   it is pinned, not restored to a guessed prior baseline. The APPS graphics vote
   may change. Shared configuration/memory-bus votes are deliberately **untouched**.
-  The first handset run reached this ACK but then read only **700000 microvolts**,
-  despite the earlier 980000-microvolt verification in that run's control flow.
-  It stopped before domain, branch, GPU or SMMU activation. This demonstrates a
-  stale supply dependency, not which remote component changed the selector.
-  The revised fixed-rate handoff therefore completes the one clock request first,
-  then reads/establishes the direct supply once. It requires **64 unchanged ready
-  snapshots, spaced 250 microseconds apart**, under one bounded SPMI poll budget.
-  A competing voltage/mode/enable change invalidates readiness; it is never fought
-  with repeated supply writes. No further RPM request is issued after establishment.
-  Unknown pin policies and missing ACKs stop before any direct supply writes.
+  The original direct-supply run read **700000 microvolts** after its ACK. The v2
+  clock-first/direct-supply run then passed **30 unchanged adequate-supply checks**
+  before also reading 700 mV, while HPM and enable remained asserted. The target
+  written was 980 mV; the exact earlier successful selector is not photographed.
+  Reordering
+  alone therefore did not solve the voltage-control problem. These photographs
+  do not identify the writer, prove a periodic governor or qualify an RPM supply
+  resource. Direct programming is not repeated to fight the observed change.
+- After the v3 ACK, passively wait for **64 consecutive qualified snapshots**, spaced
+  **250 microseconds apart**, with at most **256 attempts** and one shared 10000-poll
+  SPMI budget. The GPU-access floor stays **980000 microvolts**, with the same
+  1355000-microvolt ceiling and expected range/identity. Only AUTO (`0x40`) or HPM
+  (`0x80`), exact software enable (`0x80`) and ready status qualify. Selector changes
+  within that qualified band are allowed; unknown pin/mode bits are not.
+  Initial undervoltage can settle within the finite window. Once qualification
+  starts, a drop below the guard or loss of readiness stops immediately: no new
+  voltage write, clock request or silent requalification is attempted. A missing
+  clock ACK prevents observation from qualifying the handoff at all.
 - Enable the OxiLi domains, retention and three branches using bounded polls.
   Revalidate the same actual supply before opening GPU register access and again
   after command-hardware initialization. An invalidated rail remains pinned and
@@ -117,15 +129,25 @@ The result screen is CPU-drawn diagnostics. No microcode queue, DMA destination,
 shader, GPU-rendered image, measured FPS or iOS support is claimed by this test.
 SMMU routing may remain unsupported even after command hardware initialization.
 Actual handset results must be recorded separately from host tests and EFI builds.
-The revised ordering is an experimental fixed-clock configuration-access path,
-not proof of permanent remote voltage ownership, dynamic frequency scaling or a
-DMA/rendering qualification. The recorded handset stop and host-only follow-up
-are in `docs/hardware/2026-10-27-native-gpu-supply.json`.
+This remains an experimental configuration-access path, not proof of permanent
+remote voltage ownership, voltage/frequency electrical qualification or DMA/rendering.
+The ACPI exit sequence also contains domain transitions and P-state restoration;
+its rate table alone does **not** prove that a clock vote establishes adequate
+voltage before those transitions. If the guarded supply does not appear, this
+test stops before domain/GPU access rather than relaxing the guard.
+The first handset stop is in `docs/hardware/2026-10-27-native-gpu-supply.json`;
+the failed v2 stability experiment is recorded separately in
+`docs/hardware/2026-10-27-native-gpu-supply-v2.json`. The source-pinned startup table
+is in `docs/hardware/2026-10-27-graphics-startup-profile.json` and is checked against
+both full ACPI sources by `scripts/check-graphics-profile.py` locally and in CI.
 All numbers on this diagnostic screen are hexadecimal. `PMIC TYPE/SUB` packs
 type then subtype in two bytes; `RAIL IN/OUT CFG` packs range, voltage selector,
 mode and enable in four bytes. Raw PMIC status, A418 last register/value and ELR
-are retained alongside SMMU identifiers, cumulative stable-supply samples and the first four stream slots so a
-single full-screen photo captures the failing configuration. Unreached fields
+are retained alongside SMMU identifiers and the first four stream slots. The v3
+screen also records requested clock KHz (not measured KHz), total supply reads,
+qualified reads and the minimum/maximum selector-derived voltage observed. These
+are discrete samples, not independent analog measurements or continuous ownership
+proof. Labels fit their value columns. Unreached fields
 remain zero and are not represented as successful hardware reads.
 
 The rail mapping comes from the [Lumia board description](https://github.com/torvalds/linux/blob/v6.12/arch/arm64/boot/dts/qcom/msm8994-msft-lumia-octagon.dtsi),

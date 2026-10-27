@@ -205,10 +205,11 @@ Result startPinned(Controller &controller, const RegisterIo &io,
                    const PinnedDependencies &dependencies, u32 mmioPolls)
 {
     if (controller.state != State::Empty) { return Result::NotReady; }
-    if (!dependencies.exclusiveHardware || !dependencies.directRailReady ||
+    if (!dependencies.exclusiveHardware || !dependencies.observedRailReady ||
         !dependencies.clockAcknowledged || !dependencies.inheritedBusesUntouched ||
-        dependencies.graphicsKHz != 19200 || dependencies.graphicsMicrovolts < 980000 ||
-        dependencies.graphicsMicrovolts > 1355000) { return Result::Unqualified; }
+        dependencies.graphicsKHz != lumia950::kBootGpuHz / 1000 ||
+        dependencies.graphicsMicrovolts < lumia950::kMinimumGpuMicrovolts ||
+        dependencies.graphicsMicrovolts > lumia950::kMaximumGpuMicrovolts) { return Result::Unqualified; }
     if (!io.read || !io.write || !io.barrier || !io.delayUs || !validBudget(mmioPolls, 1)) {
         return Result::Invalid;
     }

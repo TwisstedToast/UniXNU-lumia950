@@ -41,7 +41,7 @@ struct Controller {
 struct PinnedDependencies {
     u32 graphicsMicrovolts;
     u32 graphicsKHz;
-    bool directRailReady;
+    bool observedRailReady;
     bool clockAcknowledged;
     bool inheritedBusesUntouched;
     bool exclusiveHardware;

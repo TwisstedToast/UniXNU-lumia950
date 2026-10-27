@@ -38,7 +38,7 @@
     "native_graphics_clock_correlated_ack_observed": true,
     "post_ack_graphics_voltage_microvolts": 700000,
     "domains_remained_collapsed": true,
-    "initial_980mv_verification_inferred_from_executed_control_flow": true,
+    "initial_at_least_980mv_verification_inferred_from_executed_control_flow": true,
     "initial_980mv_value_separately_photographed": false,
     "voltage_owner_identified": false,
     "unreached_zero_gpu_and_smmu_fields_are_not_register_observations": true
@@ -54,7 +54,8 @@
     "clock_changes_after_supply_establishment": false,
     "additional_supply_checks": "After domain/branch activation before GPU access, and after command-hardware initialization",
     "global_remote_voltage_ownership_claimed": false,
-    "handset_result_observed": false
+    "handset_result_observed": true,
+    "result_reference": "2026-10-27-native-gpu-supply-v2.json"
   },
   "not_established": {
     "gpu_power_on": true,
