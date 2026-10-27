@@ -87,30 +87,75 @@ struct NativeGpuResult {
     secure::Result secureResult;
     secure::Contexts contexts;
     secure::Result contextResult;
+    bool baselineComplete;
     bool complete;
 };
 
-void NativeGpuProgress(const ProbeFramebuffer &framebuffer, const char *stage)
+void NativeGpuProgress(const ProbeFramebuffer &framebuffer, const char *stage, u32 pauseMicroseconds = 750000)
 {
     nativeGpuStage = stage;
+    ++nativeGpuCheckpoint;
     const u32 color = ProbeFramebufferColor(framebuffer.pixel_format, 60, 170, 255);
-    ProbeFillRectangle(&framebuffer, 0, 0, framebuffer.width, 160, 0);
-    Line(framebuffer, 0, "NATIVE GPU - POST EBS", color);
+    ProbeFillRectangle(&framebuffer, 0, 0, framebuffer.width, 440, 0);
+    Line(framebuffer, 0, "GPU BRINGUP V7 - CPU STATUS ONLY", color);
+    Line(framebuffer, 1, ProbeGpuModeName(nativeGpuMode), color);
     Line(framebuffer, 2, stage, color);
-    Flush(framebuffer, 0, 160);
+    Number(framebuffer, 3, "TRACE STEP", nativeGpuCheckpoint, color);
+    Flush(framebuffer, 0, 440);
+    if (pauseMicroseconds) { Delay(nullptr, pauseMicroseconds); }
+}
+
+struct NativeScmTrace { const ProbeFramebuffer *framebuffer; u32 entries; u64 activeFunction; };
+
+bool NativeScmInvoke(void *opaque, secure::MonitorRegisters *values)
+{
+    if (!opaque || !values || !ProbeGpuAllowsSecure(nativeGpuMode)) { return false; }
+    auto &trace = *static_cast<NativeScmTrace *>(opaque);
+    const u64 function = values->values[0];
+    const bool resuming = function == 1;
+    if (!resuming) { trace.activeFunction = function; }
+    const bool query = trace.activeFunction == secure::kCallAvailable;
+    const auto &framebuffer = *trace.framebuffer;
+    const u32 color = ProbeFramebufferColor(framebuffer.pixel_format, 60, 170, 255);
+    ++trace.entries;
+    if (!resuming) {
+        NativeGpuProgress(framebuffer, query ? "ENTERING SCM AVAILABILITY QUERY" :
+            "ENTERING SCM DEVICE 18 RESTORE", 0);
+        Number(framebuffer, 5, "SCM FUNCTION", function, color);
+        Number(framebuffer, 6, "SCM ARG INFO", values->values[1], color);
+        Number(framebuffer, 7, "SCM ARG ZERO", values->values[2], color);
+        Number(framebuffer, 8, "SCM ARG ONE", values->values[3], color);
+        Number(framebuffer, 9, "SCM ENTRY", trace.entries, color);
+        Flush(framebuffer, 0, 440);
+        Delay(nullptr, 750000);
+    }
+    const bool returned = NativeGuardedScmCall(values);
+    if (ProbeGpuScmResumePending(returned, values->values[0])) { return true; }
+    NativeGpuProgress(framebuffer, !returned ? "SCM TRAP RECOVERED" :
+        query ? "SCM AVAILABILITY QUERY RETURNED" : "SCM DEVICE 18 RESTORE RETURNED", 0);
+    Number(framebuffer, 5, "SCM MONITOR", values->values[0], color);
+    Number(framebuffer, 6, "SCM SERVICE", values->values[1], color);
+    Number(framebuffer, 7, "SCM COOKIE", values->values[6], color);
+    Number(framebuffer, 8, "GUARD RETURNED", returned, color);
+    Number(framebuffer, 9, "SCM ENTRY", trace.entries, color);
+    Flush(framebuffer, 0, 440);
+    Delay(nullptr, 750000);
+    return returned;
 }
 
 [[noreturn]] void NativeGpuResultScreen(const ProbeFramebuffer &framebuffer, const NativeGpuResult &result)
 {
     const auto &handoff = result.handoff;
+    const bool passed = result.complete || result.baselineComplete;
     const u32 color = ProbeFramebufferColor(framebuffer.pixel_format,
-        result.complete ? 40 : 255, result.complete ? 255 : 100, 60);
+        passed ? 40 : 255, passed ? 255 : 100, 60);
     NativeGpuContext context = {};
     PowerSnapshot observed = {};
     const RegisterIo registers = {&context, NativeGpuRead, NativeGpuWrite, NativeGpuBarrier, Delay};
     readPower(registers, &observed);
     ProbeFillRectangle(&framebuffer, 0, 0, framebuffer.width, framebuffer.height, 0);
-    const char *heading = result.complete ? "NATIVE GPU + SMMU CONTEXT ACCESS OK" :
+    const char *heading = result.baselineComplete ? "GPU HARDWARE BASELINE OK - NO SMC" :
+        result.complete ? "NATIVE GPU + SMMU CONTEXT ACCESS OK" :
         result.hardwareResult == HardwareResult::Ok ? "GPU INITIALIZED - SMMU BLOCKED" : "NATIVE GPU ACTIVATION STOPPED";
     Line(framebuffer, 0, heading, color);
     Line(framebuffer, 1, "NO WINDOWS OR UEFI SERVICES", color);
@@ -225,12 +270,17 @@ void NativeGpuProgress(const ProbeFramebuffer &framebuffer, const char *stage)
     NativeGpuProgress(framebuffer, "VERIFYING SUPPLY AFTER HARDWARE INIT");
     result.handoff.supply = spmi::recheckGraphicsRail(result.bus, result.handoff.rail, 10000);
     if (result.handoff.supply != spmi::Result::Ok) { NativeGpuResultScreen(framebuffer, result); }
+    if (nativeGpuMode == ProbeGpuMode::GpuOnly) {
+        nativeGpuStage = "GPU ONLY - SECURE CALLS SKIPPED";
+        result.baselineComplete = true;
+        NativeGpuResultScreen(framebuffer, result);
+    }
+    if (!ProbeGpuAllowsSecure(nativeGpuMode)) { NativeGpuResultScreen(framebuffer, result); }
     NativeGpuProgress(framebuffer, "RESTORING OEM SECURE SMMU POLICY");
-    const secure::MonitorIo monitor = {nullptr, [](void *, secure::MonitorRegisters *values) {
-        return NativeGuardedScmCall(values);
-    }};
+    NativeScmTrace trace = {&framebuffer, 0, 0};
+    const secure::MonitorIo monitor = {&trace, NativeScmInvoke};
     result.secureResult = secure::restoreGraphicsConfiguration(result.configuration, monitor,
-        {true, true, true, nativeSmmuProfile, true}, 64);
+        {true, true, true, nativeSmmuProfile, ProbeGpuAllowsSecure(nativeGpuMode)}, 64);
     if (result.secureResult != secure::Result::Ok) { NativeGpuResultScreen(framebuffer, result); }
     NativeGpuProgress(framebuffer, "READING NONSECURE GPU CONTEXT BANKS");
     result.contextResult = secure::inspectGraphicsContexts(result.contexts, registers, result.configuration);

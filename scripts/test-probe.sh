@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 OUT=${1:-$ROOT/build/probe-tests}
 CC=${CC:-cc}
+CXX=${CXX:-c++}
 
 mkdir -p "$OUT"
 "$CC" -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined \
@@ -22,5 +23,9 @@ mkdir -p "$OUT"
   "$ROOT/tools/uefi-probe/MemoryMove.c" \
   "$ROOT/tools/uefi-probe/Test/check-memory-move.c" -o "$OUT/check-memory-move"
 "$OUT/check-memory-move"
+"$CXX" -std=c++17 -Wall -Wextra -Werror -Wconversion -Wsign-conversion -fsanitize=address,undefined \
+  -I "$ROOT/tools/uefi-probe" "$ROOT/tools/uefi-probe/Test/check-gpu-diagnostic.cpp" \
+  -o "$OUT/check-gpu-diagnostic"
+"$OUT/check-gpu-diagnostic"
 python3 "$ROOT/scripts/test-probe-fat.py"
 python3 "$ROOT/scripts/test-probe-qemu-host.py"

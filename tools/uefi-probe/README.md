@@ -189,6 +189,27 @@ The 820-check memory/handoff suite uses a simulated peer; no handset handshake s
 claimed from those tests. The standalone app must be installed deliberately; selecting
 `PROBE_ENTRY` stages only an output directory and does not write a physical disk.
 
+## Native GPU reset diagnostics (v7)
+
+The native GPU app now has two explicit confirmation modes, distinct from the
+RPM-only test described earlier. Volume Up selects GPU hardware startup only,
+with no secure calls or SMMU reads. Volume Down additionally selects the existing
+experimental secure-configuration/context test. Other keys and input failures
+cancel. The selected `GPU_DIAGNOSTIC_MODE` is saved in the preflight report before
+firmware exit.
+
+CPU-rendered numbered checkpoints pause for 750 ms to make the last stage visible
+in a short video. Availability-query entry/final return and device-18 restore
+entry/final return have separate markers with their argument/result registers and
+total monitor-entry count. Interrupted calls resume without diagnostic drawing or
+delay. These are not GPU-rendered frames or persistent post-reset logs.
+
+The GPU-only success heading is `GPU HARDWARE BASELINE OK - NO SMC`; this does not
+establish secure setup, DMA or rendering. Start with that comparison after the
+reported v6 reset. The last exact heading is needed before identifying the cause;
+brief blue text alone does not identify the failing hardware operation. No clock,
+voltage policy or secure-monitor ABI is changed by this diagnostic instrumentation.
+
 ## On the phone
 
 Use the already-installed Lumia950XLPkg ARM64 UEFI. The Windows Phone Developer Menu is

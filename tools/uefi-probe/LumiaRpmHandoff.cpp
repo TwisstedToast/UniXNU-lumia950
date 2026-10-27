@@ -17,6 +17,8 @@
 #include "SpmiCore.h"
 #include "PinnedGraphics.h"
 #include "SecureSmmu.h"
+#include "GpuDiagnostic.h"
+static_assert(SCAN_UP == 1 && SCAN_DOWN == 2, "GPU diagnostic scan codes must match EFI input");
 extern "C" bool NativeGuardedRead(UINT64, UINT32 *);
 extern "C" bool NativeGuardedWrite(UINT64, UINT32);
 extern "C" bool NativeGuardedScmCall(adreno::secure::MonitorRegisters *);
@@ -45,6 +47,8 @@ bool nativeVectorsActive;
 ProbeFramebuffer nativeFramebuffer;
 const char *nativeGpuStage;
 bool nativeSmmuProfile;
+ProbeGpuMode nativeGpuMode;
+UINT32 nativeGpuCheckpoint;
 #endif
 
 void Print(const char *text)
@@ -296,7 +300,7 @@ void Number(const ProbeFramebuffer &framebuffer, UINT32 row, const char *label, 
     const UINT32 scale = framebuffer.width >= 800 ? 3 : 1;
     char digits[17];
     Line(framebuffer, row, label, color);
-    if (ProbeFormatUnsigned(value, 16, 8, digits, sizeof(digits))) {
+    if (ProbeFormatUnsigned(value, 16, value > 0xffffffffull ? 16 : 8, digits, sizeof(digits))) {
         ProbeDrawText(&framebuffer, 24 + scale * 6 * 15, 40 + row * 12 * scale, scale, digits, color);
     }
 }
@@ -360,15 +364,18 @@ void Number(const ProbeFramebuffer &framebuffer, UINT32 row, const char *label, 
     asm volatile("msr daifset, #15" ::: "memory");
 #ifdef LUMIA_GPU_POWER_TEST
     nativeFramebuffer = framebuffer;
-    nativeGpuStage = "NATIVE CHANNEL";
+    nativeGpuStage = "INSTALLING EL1 EXCEPTION VECTORS";
     NativeInstallVectors();
     nativeVectorsActive = true;
-#endif
+    NativeGpuProgress(framebuffer, "EL1 EXCEPTION VECTORS INSTALLED");
+    NativeGpuProgress(framebuffer, "CLAIMING THE NATIVE RPM CHANNEL");
+#else
     const UINT32 blue = ProbeFramebufferColor(framebuffer.pixel_format, 80, 160, 255);
     ProbeFillRectangle(&framebuffer, 0, 0, framebuffer.width, framebuffer.height, 0);
     Line(framebuffer, 0, "POST EBS - CHECKING RPM", blue);
     Line(framebuffer, 1, "NO GPU WRITES OR RESOURCE VOTES", blue);
     Flush(framebuffer, 0, framebuffer.height);
+#endif
     ChannelSnapshot after = {}, last = {};
     Result claim = snapshotChannel(binding, after);
     if (claim == Result::Ok) {
@@ -381,6 +388,9 @@ void Number(const ProbeFramebuffer &framebuffer, UINT32 row, const char *label, 
     Result opened = Result::NotReady, closed = Result::NotReady, retired = Result::NotReady;
     SmdPipe pipe = {};
     if (claim == Result::Ok) {
+#ifdef LUMIA_GPU_POWER_TEST
+        NativeGpuProgress(framebuffer, "OPENING THE NATIVE RPM CHANNEL");
+#endif
         opened = openPipe(pipe, memoryIo(binding), 88, binding.layout.fifo.bytes / 2, true, true, 2000, 100);
 #ifdef LUMIA_GPU_POWER_TEST
         if (opened == Result::Ok) { RunNativeGpuPower(framebuffer, pipe); }
@@ -422,7 +432,9 @@ static EFI_STATUS Run(EFI_HANDLE image, EFI_SYSTEM_TABLE *systemTable)
     preflightStage = "PLATFORM";
     firmware->ConOut->ClearScreen(firmware->ConOut);
 #ifdef LUMIA_GPU_POWER_TEST
-    Print("LUMIA 950 | NATIVE GPU POWER v6\r\n");
+    nativeGpuMode = ProbeGpuMode::Cancelled;
+    nativeGpuCheckpoint = 0;
+    Print("LUMIA 950 | NATIVE GPU POWER v7\r\n");
     Print("Post-EBS PMI8994 supply, dedicated clock, GPU power and hardware setup.\r\n");
     Print("No Windows. No shared-bus RPM changes. No DMA, rendered frame or iOS claim.\r\n");
 #else
@@ -445,7 +457,7 @@ static EFI_STATUS Run(EFI_HANDLE image, EFI_SYSTEM_TABLE *systemTable)
         return EFI_UNSUPPORTED;
     }
     Print("SMMU_PROFILE=EXACT_MMU3_XPUE1\r\n");
-    Print("Experimental native SMC32: query availability, restore GPU SMMU device 18 only.\r\n");
+    Print("Secure-test mode only: experimental SMC32 query and GPU SMMU device-18 restore.\r\n");
     Print("Protected global ID/route registers are NOT probed. Context banks are read-only.\r\n");
 #endif
     preflightStage = "CPU_CONTEXT";
@@ -579,11 +591,13 @@ static EFI_STATUS Run(EFI_HANDLE image, EFI_SYSTEM_TABLE *systemTable)
         PrintHex("FW_RX_READ", snapshot.words[20]); PrintHex("FW_RX_WRITE", snapshot.words[21]);
     }
     Print("No channel, FIFO or IPC writes before ExitBootServices.\r\n");
-    SavePreflight(image);
-    if (!qualified) { services->FreePool(map); return EFI_UNSUPPORTED; }
+    if (!qualified) { SavePreflight(image); services->FreePool(map); return EFI_UNSUPPORTED; }
     preflightStage = "START_KEY";
 #ifdef LUMIA_GPU_POWER_TEST
-    Print("GPU POWER READY - Volume Up starts native GPU writes.\r\n");
+    Print("GPU DIAGNOSTIC READY - explicit mode selection required.\r\n");
+    Print("Volume Up: GPU hardware baseline only. NO secure calls or SMMU reads.\r\n");
+    Print("Volume Down: GPU startup plus experimental secure SMMU/context test.\r\n");
+    Print("Numbered CPU-rendered checkpoints pause for video capture, not GPU frames.\r\n");
     Print("PMIC observation only: no voltage, mode or enable register writes.\r\n");
     Print("Only clk2/1 receives the Microsoft startup profile of 300000 KHz.\r\n");
     Print("Experimental OEM RPM voltage policy: ACK plus regulator-ready, not fixed 980mV.\r\n");
@@ -591,10 +605,19 @@ static EFI_STATUS Run(EFI_HANDLE image, EFI_SYSTEM_TABLE *systemTable)
 #else
     Print("RPM HANDOFF READY - Volume Up starts the native test.\r\n");
 #endif
-    Print("Any other key returns. Post-EBS results are screen-only.\r\n");
+    Print("Any other key returns. Post-EBS checkpoints/results are screen-only.\r\n");
     EFI_INPUT_KEY key = {};
     status = WaitForKey(&key);
-    if (EFI_ERROR(status) || key.ScanCode != SCAN_UP) {
+#ifdef LUMIA_GPU_POWER_TEST
+    nativeGpuMode = ProbeGpuModeForScan(key.ScanCode, !EFI_ERROR(status));
+    PrintHex("GPU_DIAGNOSTIC_SCAN", key.ScanCode);
+    Print("GPU_DIAGNOSTIC_MODE="); Print(ProbeGpuModeName(nativeGpuMode)); Print("\r\n");
+    const bool selected = nativeGpuMode != ProbeGpuMode::Cancelled;
+#else
+    const bool selected = !EFI_ERROR(status) && key.ScanCode == SCAN_UP;
+#endif
+    SavePreflight(image);
+    if (!selected) {
         Print("RPM HANDOFF CANCELLED - firmware retained.\r\n");
         services->FreePool(map);
         return EFI_ERROR(status) ? status : EFI_SUCCESS;
@@ -614,6 +637,9 @@ static EFI_STATUS Run(EFI_HANDLE image, EFI_SYSTEM_TABLE *systemTable)
     ProbeFillRectangle(&framebuffer, 0, 0, framebuffer.width, framebuffer.height, 0);
     Line(framebuffer, 0, "BEFORE EBS - RPM HANDOFF", orange);
     Flush(framebuffer, 0, framebuffer.height);
+#ifdef LUMIA_GPU_POWER_TEST
+    Delay(nullptr, 750000);
+#endif
     for (UINT32 attempt = 0; attempt < 3; ++attempt) {
         mapBytes = capacity;
         status = getMap(&mapBytes, reinterpret_cast<EFI_MEMORY_DESCRIPTOR *>(map), &mapKey, &stride, &version);
@@ -658,7 +684,9 @@ extern "C" [[noreturn]] void NativeFatalFault()
     Number(nativeFramebuffer, 4, "ESR EL1", native_mmio_esr, color);
     Number(nativeFramebuffer, 5, "FAR EL1", native_mmio_far, color);
     Number(nativeFramebuffer, 6, "ELR EL1", native_mmio_elr, color);
-    Line(nativeFramebuffer, 8, "FORCE REBOOT TO EXIT", color);
+    Number(nativeFramebuffer, 7, "TRACE STEP", nativeGpuCheckpoint, color);
+    Line(nativeFramebuffer, 8, ProbeGpuModeName(nativeGpuMode), color);
+    Line(nativeFramebuffer, 10, "FORCE REBOOT TO EXIT", color);
     Flush(nativeFramebuffer, 0, nativeFramebuffer.height);
     for (;;) { asm volatile("wfi"); }
 }

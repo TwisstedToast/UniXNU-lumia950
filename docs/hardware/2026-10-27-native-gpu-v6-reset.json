@@ -1,0 +1,18 @@
+{
+  "schema": "lumia950-native-gpu-v6-user-reported-reset-v1",
+  "evidence_type": "User description; no photograph or post-exit trace captured",
+  "installed_gpu_sha256": "9393fd9b33b2085f27debe23da61c0ae19a8d2097651e1f55ca412572ec7ccc0",
+  "source_commit": "34f1eb79a65119879b4d978ea6ef557a166087ce",
+  "user_report": "blue text somewhere top left adn then just immediately reboots",
+  "trigger_reported": "During the Volume Up diagnostic after confirmation",
+  "reboot_reported": true,
+  "last_heading_known": false,
+  "failing_stage_determined": false,
+  "exit_boot_services_reached": null,
+  "native_gpu_startup_reached": null,
+  "secure_monitor_called": null,
+  "secure_restore_completed": null,
+  "gpu_frame_observed": false,
+  "ios_userspace_boot_observed": false,
+  "v7_response": "Separate explicit GPU-only and secure-context modes; add numbered CPU-rendered checkpoints and individual secure-query/restore entry and final-return markers. Interrupted calls resume without diagnostic drawing or delay. No clock, voltage, SMC ABI or hardware-sequence change."
+}

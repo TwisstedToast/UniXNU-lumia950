@@ -70,8 +70,10 @@ Its steps are:
   UEFI RAM conflict, reserve exactly those 128 KiB as MMIO and request UC page
   attributes through DXE before checking every Device translation. Existing RAM,
   reserved ownership, ambiguous descriptors and failed mappings are not overridden.
-- Save the preflight. **Volume Up** deliberately authorizes the post-EBS test;
-  another key cancels. No native SPMI transaction or GPU power/clock write occurs
+- V7 uses **Volume Up** for GPU-only startup, without secure calls or SMMU reads;
+  **Volume Down** explicitly selects startup plus secure configuration/context
+  inspection. Any other key cancels. Save the preflight with the selected mode
+  before firmware exit. No native SPMI transaction or GPU power/clock write occurs
   before this confirmation and successful firmware exit.
 - Mask interrupts, install local EL1 exception vectors, and claim/open the same
   native RPM channel that passed the earlier handset handshake.
@@ -221,6 +223,35 @@ Valid-field masks distinguish real zero values from missing reads. Existing enab
 contexts or faults remain unchanged and stop qualification. Partial GPU success is
 shown separately from SMMU failure. This establishes no global-route readback,
 page-table mapping, command execution, DMA, rendered frame or measured FPS.
+
+### V7 reset-stage diagnostics
+
+The user reports v6 displaying brief blue text and immediately rebooting after
+Volume Up. No exact final heading or post-exit result is available, so neither
+the reset location nor a secure-monitor call is established. The observation in
+`docs/hardware/2026-10-27-native-gpu-v6-reset.json` does not identify a register,
+power-policy failure or monitor ABI error.
+
+V7 keeps the existing hardware and secure-call sequence, but separates two explicit
+confirmation modes. **Volume Up** runs GPU-only startup and stops after hardware
+initialization plus the final supply recheck, before any secure call or SMMU read.
+Its successful heading is `GPU HARDWARE BASELINE OK - NO SMC`, not SMMU access or
+GPU rendering. **Volume Down** additionally selects the existing experimental
+secure-context path. An input error, another scan code or an invalid mode does not
+authorize secure calls. `GPU_DIAGNOSTIC_MODE` is saved after selection and before
+firmware exit.
+
+Numbered CPU-rendered checkpoints pause for 750 ms, including after vector
+installation, before channel claim/open and at each GPU phase. The secure mode
+separately shows entry and final return for availability and device-18 restore,
+including function/argument or result registers and the total monitor-entry count.
+Interrupted calls resume without diagnostic drawing or delay. CPU exception screens retain
+the checkpoint number and selected mode; 64-bit register values are not truncated.
+These screen-only pauses are for a photograph/video, not a frame-rate demonstration
+or a persistent post-reset log. A secure-firmware reset or nonreturning call is
+not recoverable merely because EL1 MMIO/undefined-instruction guards exist.
+Voltage selection, clock requests, register initialization, secure-call ABI,
+direct-write restrictions and the monitor-entry budget are unchanged.
 
 The rail mapping comes from the [Lumia board description](https://github.com/torvalds/linux/blob/v6.12/arch/arm64/boot/dts/qcom/msm8994-msft-lumia-octagon.dtsi),
 [PMI8994 SPMI description](https://github.com/torvalds/linux/blob/v6.12/arch/arm64/boot/dts/qcom/pmi8994.dtsi)
