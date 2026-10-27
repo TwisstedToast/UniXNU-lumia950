@@ -9,7 +9,7 @@ Windows demonstration is not a substitute and is not part of this boot tree.
 
 1. **Native Adreno hardware test**: `LumiaGpuPower.efi` runs on the firmware's EL1
    environment, then exits boot services and operates the hardware natively.
-2. **XNU kernel - no iOS userspace yet**: DarwinBoot hands off to the source-built
+2. **Experimental XNU kernel - no iOS userspace**: DarwinBoot hands off to the source-built
    iOS 16.x XNU kernel. This is an early kernel/console/IOKit boot attempt, not a
    SpringBoard, APFS-root, application or accelerated compositor milestone.
 3. **Exit to firmware**: the default. Neither test automatically starts; the
@@ -149,6 +149,23 @@ registers, clock bytes, WFE event index and kernel hash. The original kernel
 reproduces the same UBSan stop. Reaching VM initialization's entry proves only
 the preceding early initialization, not completion of VM, IOKit, an actual
 handset boot or iOS userspace.
+
+The next actual VM assertion exposed a missing `/chosen/memory-map` node. The
+generator now always emits that node, empty when there is no real RAMDisk or
+TrustCache; it never invents physical placeholder contents. The sealed build
+from CI run `40493229820`, source `8742e38`, then entered and **returned from**
+`arm_vm_init` under A53/GICv2 emulation. Its 19.2 MHz DT timebase produced WFE
+event index 4. This proves neither an accurate QEMU hardware clock rate nor a
+handset result; it verifies the source-kernel initialization path.
+
+Further real IOKit execution exposed missing interrupt-parent references. The
+GIC now has a local software `AAPL,phandle` and zero address cells; all three
+peripheral nodes explicitly reference it. These are registry references, not
+guessed physical interrupt routes or proof of device IRQ delivery. The native
+drivers remain polling/identity bring-up. `--crypto-post` observes the real
+provider entry/return and status, stopping on intervening traps or a bounded
+timeout; no successful runtime POST or completed IOKit/iOS boot is claimed yet.
+The kernel menu entry is explicitly experimental, not a ready iOS installation.
 
 The source-only configuration also selects the actual source crypto initializer.
 It cannot wait for a prelinked provider that is absent from this image. This does

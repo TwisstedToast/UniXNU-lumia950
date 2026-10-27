@@ -1,0 +1,49 @@
+{
+  "date": "2026-10-27",
+  "evidence_kind": "Actual ARM64 kernel instruction breakpoints in QEMU, not handset or image-pixel inference",
+  "environment": {
+    "cpu": "cortex-a53",
+    "cpu_count": 1,
+    "gic_version": 2,
+    "memory_mib": 768,
+    "display": "ramfb",
+    "esp_access": "private read-only VM copy",
+    "dt_timebase_hz": 19200000,
+    "accurate_hardware_timing_qualified": false
+  },
+  "original_failure": {
+    "kernel_sha256": "10c5edac166fe1da4e09e662856f73bcec1f00416a739e666c22854513844fc0",
+    "first_stop": "___ubsan_handle_sub_overflow_minimal",
+    "pc": "0xfffffff0079dfc00",
+    "caller_return": "0xfffffff0073da388",
+    "function": "wfe_timeout_configure",
+    "clock_info_zero": true,
+    "cause": "pe_identify_machine returned for the valid zero-base identity bus before reading the timebase"
+  },
+  "sealed_source_build": {
+    "ci_run": "https://github.com/TwisstedToast/UniXNU-lumia950/actions/runs/40493229820",
+    "source_commit": "8742e3878f96c64935d187cd05d21c7254df5884",
+    "ci_conclusion": "success",
+    "artifact_sha256": "778693bffb94b9c44c5232aa6477005f03b9b1b854bcf3e84cde95b458efa144",
+    "kernel_sha256": "f1bc3ace0eb4676a48327caaeae58ab23ee0e382bac09bcb4589c6ef210ee58e",
+    "kernel_bytes": 18670288,
+    "source_provider_symbols_present": true,
+    "post_integrity_hmac_verified": true,
+    "post_hmac_sha256": "55d956168e610010fda9f482532a43538cd07005cda37b37fb0b69e23fd88c07"
+  },
+  "observed_milestones": {
+    "wfe_event_index": 4,
+    "arm_vm_init_entry_observed": true,
+    "arm_vm_init_return_observed": true,
+    "vm_caller_return_pc": "0xfffffff0079b9fb0",
+    "mandatory_empty_memory_map_node_required": true,
+    "runtime_crypto_post_success_observed": false
+  },
+  "not_established": {
+    "completed_iokit_initialization": true,
+    "handset_xnu_boot": true,
+    "ios_userspace_boot": true,
+    "native_gpu_frame": true,
+    "60fps": true
+  }
+}

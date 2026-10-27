@@ -253,13 +253,15 @@ def build_tree(
         placeholders.append(("PackedRAMDisk", bytes(16)))
     if trust_cache:
         placeholders.append(("TrustCache", bytes(16)))
-    chosen_children = [node("memory-map", placeholders)] if placeholders else []
+    chosen_children = [node("memory-map", placeholders)]
 
     intc = node(
         "intc",
         [
             ("compatible", string("qcom,msm-qgic2", "arm,gic-2")),
             ("interrupt-controller", b""),
+            ("AAPL,phandle", u32(1)),
+            ("#address-cells", u32(0)),
             ("#interrupt-cells", u32(3)),
             ("reg", b"".join(u64(address) + u64(size) for address, size in (GIC_DISTRIBUTOR, GIC_CPU_INTERFACE))),
         ],
@@ -269,8 +271,8 @@ def build_tree(
         [
             ("compatible", string("qcom,msm8994-sdhci", "qcom,sdhci-msm-v4")),
             ("reg", b"".join(u64(address) + u64(size) for address, size in SDHCI_WINDOWS)),
-            # Apple's three-cell interrupt encoding, as README.md records it.
             ("interrupts", b"".join(u32(0) + u32(irq) + u32(4) for irq in SDHCI_INTERRUPTS)),
+            ("interrupt-parent", u32(1)),
             ("clock-frequency", u32(TIMEBASE_FREQUENCY)),
         ],
     )
@@ -280,6 +282,7 @@ def build_tree(
             ("compatible", string("qcom,kgsl-3d0", "qcom,kgsl-3d")),
             ("reg", b"".join(u64(address) + u64(size) for address, size in KGSL_WINDOWS)),
             ("interrupts", u32(0) + u32(KGSL_INTERRUPT) + u32(4)),
+            ("interrupt-parent", u32(1)),
             # The device tree's qcom,chipid: generation 4 (a4xx) is what the
             # driver's register database and command stream cover.
             ("chip-id", u32(GPU_CHIP_ID)),
@@ -291,6 +294,7 @@ def build_tree(
             ("compatible", string("qcom,mdss_mdp", "qcom,mdp")),
             ("reg", b"".join(u64(address) + u64(size) for address, size in MDSS_WINDOWS)),
             ("interrupts", u32(0) + u32(MDSS_INTERRUPT) + u32(4)),
+            ("interrupt-parent", u32(1)),
             # The panel the firmware's GOP mode describes, so a driver that has
             # the ADT but not the firmware still knows what it is driving.
             ("panel-width", u32(1440)),

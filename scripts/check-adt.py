@@ -283,6 +283,8 @@ def _check_chosen(chosen: Node, errors: list[str], notes: list[str], allow_missi
     elif present:
         _check_nvram(bank_size, bank_count, current, image, errors)
 
+    if chosen.child("memory-map") is None:
+        errors.append("missing /chosen/memory-map: XNU VM initialization requires the node even without a trust cache")
     for child in chosen.children:
         if child.name == "memory-map":
             for placeholder in child.props:
@@ -478,7 +480,15 @@ def _check_arm_io(arm_io: Node, errors: list[str], notes: list[str]) -> None:
             errors.append(f"/arm-io/intc/compatible is {compatible!r}, expected a GIC")
         cells = intc.value("#interrupt-cells")
         if cells is None or len(cells) != 4 or struct.unpack("<I", cells)[0] != 3:
-            errors.append("/arm-io/intc/#interrupt-cells must be 3 (Apple's encoding)")
+            errors.append("/arm-io/intc/#interrupt-cells must be 3 for this GIC description")
+        phandle = intc.value("AAPL,phandle")
+        if phandle is None or len(phandle) != 4 or struct.unpack("<I", phandle)[0] == 0:
+            errors.append("/arm-io/intc needs a nonzero 32-bit AAPL,phandle for IODT interrupt-parent lookup")
+        if intc.value("#address-cells") != struct.pack("<I", 0):
+            errors.append("/arm-io/intc/#address-cells must be zero for interrupt specifications")
+        for child in arm_io.children:
+            if child.value("interrupts") is not None and child.value("interrupt-parent") != phandle:
+                errors.append(f"/arm-io/{child.name}/interrupt-parent does not reference the GIC AAPL,phandle")
         reg = intc.value("reg")
         if reg is None or len(reg) % 16 or len(reg) < 16:
             errors.append("/arm-io/intc/reg does not describe whole address/size windows")
@@ -540,6 +550,7 @@ def self_test() -> int:
     assert [struct.unpack("<I", cpu.value("reg"))[0]
             for cpu in good_tree.child("cpus").children] == [0, 1, 2, 3, 0x100, 0x101]
     assert good_tree.child("cpus").children[0].value("compatible") == b"arm,cortex-a53\0"
+    assert {prop.name for prop in good_tree.child("chosen").child("memory-map").props} == {"name"}
     rejected_count = 0
 
     def expect_failure(data: bytes, needle: str, label: str) -> None:
@@ -554,6 +565,18 @@ def self_test() -> int:
         rejected_count += 1
 
     expect_failure(good[:12], "truncated", "truncated header")
+
+    tree = parse(good)
+    tree.child("chosen").children = [child for child in tree.child("chosen").children if child.name != "memory-map"]
+    expect_failure(encode(tree), "/chosen/memory-map", "empty mandatory memory-map node omitted")
+
+    tree = parse(good)
+    tree.find("arm-io/intc").props = [prop for prop in tree.find("arm-io/intc").props if prop.name != "AAPL,phandle"]
+    expect_failure(encode(tree), "AAPL,phandle", "missing IODT interrupt controller reference")
+
+    tree = parse(good)
+    tree.find("arm-io/sdhci@f9824900").prop("interrupt-parent").value = struct.pack("<I", 2)
+    expect_failure(encode(tree), "interrupt-parent", "unresolved IODT interrupt parent")
 
     tree = parse(good)
     tree.children = [child for child in tree.children if child.name != "cpus"]

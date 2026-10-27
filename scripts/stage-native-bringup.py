@@ -172,7 +172,7 @@ type = "efi"
 path = "Drivers/LumiaGpuPower.efi"
 [[entry]]
 id = "xnu"
-title = "XNU kernel - no iOS userspace yet"
+title = "Experimental XNU kernel - no iOS userspace"
 type = "xnu"
 path = "Payloads/kernel.macho"
 args = "-v keepsyms=1 debug=0x100 cpus=1"
