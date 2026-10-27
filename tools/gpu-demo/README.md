@@ -73,8 +73,12 @@ bash scripts/test-gpu-demo.sh /tmp/gpu-demo-tests
 
 The build embeds `Animation.hlsl`, links only Windows system DLLs, checks the
 executable's ARM64 PE32+/Windows GUI contract and records source/binary hashes.
-It never copies anything to the phone. Zig caches are placed in the output
-directory, not on the internal disk by default.
+It never copies anything to the phone. The linker works in the system temporary
+directory, then the builder streams, syncs and verifies the final EXE on the SSD.
+This avoids memory-mapped linker output on third-party NTFS filesystems. Zig caches
+also use the temporary directory by default; `ZIG_GLOBAL_CACHE_DIR` and
+`ZIG_LOCAL_CACHE_DIR` can select another reliable native filesystem. Allow a few
+hundred MB for compiler caches, independently of the small final application.
 
 In an MSVC native or cross-build developer prompt:
 

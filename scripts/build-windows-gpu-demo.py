@@ -7,6 +7,7 @@ from pathlib import Path
 import shutil
 import struct
 import subprocess
+import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -54,24 +55,37 @@ def main():
     if args.prepare_only:
         return
     executable = output / "LumiaGpuDemo.exe"
+    temporary = tempfile.TemporaryDirectory(prefix="lumia-gpu-demo-")
+    linked = Path(temporary.name) / "LumiaGpuDemo.exe"
     if args.compiler == "zig":
         target = {"arm64": "aarch64-windows-gnu", "x64": "x86_64-windows-gnu"}[args.arch]
         command = [args.zig, "c++", "-target", target, "-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror",
                    "-fms-extensions", "-fno-exceptions", "-fno-rtti", "-nostdlib++", "-municode", "-Wl,--subsystem,windows",
                    "-I", str(output), "-I", str(SOURCES), str(SOURCES / "WindowsGpuDemo.cpp"),
-                   "-o", str(executable), "-ld3d11", "-ldxgi", "-ldxguid", "-ld3dcompiler_47",
+                   "-o", str(linked), "-ld3d11", "-ldxgi", "-ldxguid", "-ld3dcompiler_47",
                    "-luser32", "-lgdi32", "-lshell32"]
         environment = dict(os.environ)
-        environment.setdefault("ZIG_GLOBAL_CACHE_DIR", str(output / ".zig-global"))
-        environment.setdefault("ZIG_LOCAL_CACHE_DIR", str(output / ".zig-local"))
+        cache = Path(tempfile.gettempdir()) / "lumia-gpu-demo-zig"
+        environment.setdefault("ZIG_GLOBAL_CACHE_DIR", str(cache / "global"))
+        environment.setdefault("ZIG_LOCAL_CACHE_DIR", str(cache / "local"))
     else:
         command = ["cl", "/nologo", "/std:c++17", "/O2", "/W4", "/WX", "/MT", "/EHsc",
                    "/D_CRT_SECURE_NO_WARNINGS", "/DUNICODE", "/D_UNICODE", f"/I{output}", f"/I{SOURCES}",
-                   str(SOURCES / "WindowsGpuDemo.cpp"), f"/Fe:{executable}", f"/Fo:{output / 'WindowsGpuDemo.obj'}",
+                   str(SOURCES / "WindowsGpuDemo.cpp"), f"/Fe:{linked}", f"/Fo:{Path(temporary.name) / 'WindowsGpuDemo.obj'}",
                    "/link", "/SUBSYSTEM:WINDOWS", "d3d11.lib", "dxgi.lib", "dxguid.lib", "d3dcompiler.lib",
                    "user32.lib", "gdi32.lib", "shell32.lib"]
         environment = None
-    subprocess.run(command, env=environment, check=True)
+    try:
+        subprocess.run(command, env=environment, check=True)
+        built = validate_image(linked, args.arch)
+        with executable.open("wb") as stream:
+            stream.write(linked.read_bytes())
+            stream.flush()
+            os.fsync(stream.fileno())
+        if validate_image(executable, args.arch) != built:
+            raise ValueError("copied executable does not match the linked image")
+    finally:
+        temporary.cleanup()
     metadata = {"schema": "lumia950-windows-gpu-baseline-v1", "architecture": args.arch,
                 "native_ios_gpu_driver": False, "handset_executed": False,
                 "hardware_fps_measured": False, "binary": validate_image(executable, args.arch),
