@@ -1,0 +1,85 @@
+{
+  "schema": "lumia950-gpu-batch-ci-v1",
+  "date": "2026-10-27",
+  "source_commit": "12d6443d1c47e12e510cd46f70b5639af3f07fd8",
+  "ci": {
+    "run": 40455332071,
+    "url": "https://github.com/TwisstedToast/UniXNU-lumia950/actions/runs/40455332071",
+    "conclusion": "success",
+    "jobs": {
+      "validate": "success",
+      "efi_preflight": "success",
+      "gicv2_emulation": "success",
+      "kernel": "success",
+      "payload": "intentionally skipped"
+    },
+    "kernel_job": 122027218496
+  },
+  "kernel_artifact": {
+    "id": 12712606301,
+    "bytes": 50353324,
+    "sha256": "923adf6451f6c9780f50e14bc09b1c898b7e0282a80c5ef70a7be10824f46004",
+    "downloaded_to_ssd": true,
+    "github_digest_independently_matched": true
+  },
+  "gpu_archive": {
+    "filename": "libNativeAdreno418.a",
+    "bytes": 492568,
+    "sha256": "93b140e0e6a196f7a4a8266bfedf710043bb807bd280add0829654020290b03b",
+    "ci_log_digest_independently_matched": true,
+    "members": [
+      "NativeAdreno418.o",
+      "AdrenoCore.o",
+      "IommuCore.o",
+      "CommandStream.o",
+      "GpuIo.o",
+      "LpaeCore.o",
+      "SmmuContext.o",
+      "Submission.o",
+      "RpmCore.o",
+      "SmdPipe.o",
+      "SmdMemory.o",
+      "RpmVotes.o",
+      "PowerController.o",
+      "A418Init.o",
+      "SmmuRoutes.o",
+      "GpuBatch.o",
+      "PlatformCheck.o"
+    ],
+    "all_17_members_independently_checked": true,
+    "machine": "ARM64_ALL, not arm64e",
+    "filetype": "MH_OBJECT"
+  },
+  "local_tests": {
+    "integrated_gpu_model": {
+      "checks": 950,
+      "failures": 0
+    },
+    "leased_votes": {
+      "checks": 72,
+      "failures": 0
+    },
+    "sanitizers": [
+      "address",
+      "undefined"
+    ],
+    "detail": "2026-10-27-gpu-batch.json"
+  },
+  "qualification": {
+    "kernel_candidate_loadable": false,
+    "kernel_candidate_status": "CI's existing qualification guard still requires loadable=false; this build does not qualify runtime ABI, relocation or handset boot",
+    "new_batch_called_by_installed_efi": false,
+    "new_batch_called_by_default_iokit_driver": false,
+    "handset_gpu_power_on": false,
+    "handset_gpu_command_completed": false,
+    "gpu_rendered_frame": false,
+    "measured_fps": null,
+    "ios_boot": false
+  },
+  "phone_preservation": {
+    "verified_current_installed_rpm_efi_bytes": 24576,
+    "verified_named_and_fallback_rpm_efi_sha256": "b782ee89bb670a62bf48de079554b94d43c22944ed24add723d93aac82ee34fc",
+    "verified_bcd_sha256": "127c7154f1261b2cf8f6422222f80836b77655ede360edaec1c6318954f17759",
+    "writes_during_this_batch": false
+  }
+}
