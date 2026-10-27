@@ -18,4 +18,8 @@ mkdir -p "$OUT"
   "$ROOT/tools/uefi-probe/Test/check-framebuffer-core.c" \
   -o "$OUT/check-framebuffer-core"
 "$OUT/check-framebuffer-core"
+"$CC" -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -Dmemmove=ProbeMemoryMove \
+  "$ROOT/tools/uefi-probe/MemoryMove.c" \
+  "$ROOT/tools/uefi-probe/Test/check-memory-move.c" -o "$OUT/check-memory-move"
+"$OUT/check-memory-move"
 python3 "$ROOT/scripts/test-probe-fat.py"

@@ -61,9 +61,10 @@ ContextResult synchronizeContext(ContextBank &bank, u32 pollBudget)
 }
 
 ContextResult bindDisabledContext(ContextBank &bank, const ContextIo &io,
-    const lpae::Tables &tables, u32 index, u32 asid, bool exclusiveOwnership)
+    const lpae::Tables &tables, u32 index, u32 asid, bool exclusiveOwnership, u32 pollBudget)
 {
     if (bank.ownsBank || !exclusiveOwnership || index > 1 || asid == 0 || asid > 255 ||
+        !pollBudget || pollBudget > 100000 ||
         !io.registers.read || !io.registers.write || !io.registers.barrier ||
         !io.registers.delayUs || !io.cleanTables || !lpae::validTables(tables)) {
         return ContextResult::Invalid;
@@ -92,7 +93,7 @@ ContextResult bindDisabledContext(ContextBank &bank, const ContextIo &io,
         !write(bank, kMair0, lpae::kMair0) || !write(bank, kMair1, 0)) {
         return ContextResult::IoError;
     }
-    const ContextResult synced = synchronizeContext(bank, 1000);
+    const ContextResult synced = synchronizeContext(bank, pollBudget);
     if (synced != ContextResult::Ok) { return synced; }
     io.registers.barrier(io.registers.context);
     if (!write(bank, kSctlr, kControl)) { return ContextResult::IoError; }
@@ -104,9 +105,16 @@ ContextResult bindDisabledContext(ContextBank &bank, const ContextIo &io,
 
 ContextResult checkTranslation(ContextBank &bank, u32 iova, u32 physical, u32 pollBudget)
 {
+    return checkTranslationAccess(bank, iova, physical, ContextAccess::PrivilegedRead, pollBudget);
+}
+
+ContextResult checkTranslationAccess(ContextBank &bank, u32 iova, u32 physical,
+    ContextAccess access, u32 pollBudget)
+{
     if (!bank.ownsBank || !bank.enabled || pollBudget == 0 || pollBudget > 100000 ||
+        static_cast<u32>(access) > 3 ||
         (iova & 4095) != (physical & 4095)) { return ContextResult::Invalid; }
-    if (!write64(bank, kAts1Pr, iova)) { return ContextResult::IoError; }
+    if (!write64(bank, kAts1Pr + static_cast<u32>(access) * 8, iova)) { return ContextResult::IoError; }
     bank.io.registers.barrier(bank.io.registers.context);
     const ContextResult waited = waitClear(bank, kAtsr, pollBudget);
     if (waited != ContextResult::Ok) { return waited; }

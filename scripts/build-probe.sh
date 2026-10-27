@@ -20,7 +20,7 @@ if [ -z "$EDK2" ] || [ ! -f "$EDK2/MdePkg/Include/Uefi.h" ]; then
 fi
 mkdir -p "$OUT/objects" "$OUT/esp/EFI/LumiaProbe" "$OUT/esp/EFI/BOOT"
 
-for component in ProbeCore FramebufferCore LumiaProbe LumiaHandoff; do
+for component in ProbeCore FramebufferCore MemoryMove LumiaProbe LumiaHandoff; do
   "$CLANG" --target=aarch64-pc-windows-msvc -std=c11 -Os \
     -ffreestanding -fno-builtin -fno-stack-protector -fshort-wchar \
     -mno-stack-arg-probe -mgeneral-regs-only -mstrict-align \
@@ -31,7 +31,7 @@ for component in ProbeCore FramebufferCore LumiaProbe LumiaHandoff; do
     -c "$ROOT/tools/uefi-probe/$component.c" -o "$OUT/objects/$component.obj"
 done
 
-for component in AdrenoCore IommuCore CommandStream GpuIo LpaeCore SmmuContext Submission PlatformCheck RpmCore SmdPipe SmdMemory; do
+for component in AdrenoCore IommuCore CommandStream GpuIo LpaeCore SmmuContext Submission PlatformCheck RpmCore SmdPipe SmdMemory RpmVotes PowerController A418Init SmmuRoutes GpuBatch; do
   "$CLANG" --target=aarch64-pc-windows-msvc -std=c++17 -Os \
     -ffreestanding -fno-builtin -fno-stack-protector -fshort-wchar \
     -fno-exceptions -fno-rtti -mno-stack-arg-probe -mgeneral-regs-only -mstrict-align \
@@ -73,6 +73,16 @@ for application in LumiaProbe LumiaHandoff LumiaGpuProbe LumiaRpmHandoff; do
     "$OUT/objects/$application.obj" "${application_objects[@]}"
   "$PYTHON" "$ROOT/scripts/check-probe-image.py" "$OUT/esp/EFI/LumiaProbe/$application.efi"
 done
+batch_objects=()
+for component in LumiaRpmHandoff ProbeCore FramebufferCore MemoryMove PlatformCheck ReportStore FirmwareSmem FirmwareMemory FirmwareGcd \
+  AdrenoCore CommandStream GpuIo LpaeCore SmmuContext Submission RpmCore SmdPipe SmdMemory \
+  RpmVotes PowerController A418Init SmmuRoutes GpuBatch; do
+  batch_objects+=("$OUT/objects/$component.obj")
+done
+"$LINKER" /machine:arm64 /subsystem:efi_application /entry:UefiMain \
+  /nodefaultlib /base:0x400000 /dynamicbase /fixed:no /timestamp:0 \
+  /opt:noref /opt:noicf "/out:$OUT/gpu-batch-link-check.efi" "${batch_objects[@]}"
+"$PYTHON" "$ROOT/scripts/check-probe-image.py" "$OUT/gpu-batch-link-check.efi"
 cp "$OUT/esp/EFI/LumiaProbe/$ENTRY.efi" "$OUT/esp/EFI/BOOT/BOOTAA64.EFI"
 echo "EFI fallback application: $ENTRY"
 echo "No files were copied to the phone."

@@ -23,10 +23,14 @@ struct ContextBank {
     bool enabled;
 };
 
+enum class ContextAccess : u32 { PrivilegedRead, PrivilegedWrite, UnprivilegedRead, UnprivilegedWrite };
+
 ContextResult bindDisabledContext(ContextBank &bank, const ContextIo &io,
-    const lpae::Tables &tables, u32 index, u32 asid, bool exclusiveOwnership);
+    const lpae::Tables &tables, u32 index, u32 asid, bool exclusiveOwnership, u32 pollBudget = 1000);
 ContextResult synchronizeContext(ContextBank &bank, u32 pollBudget);
 ContextResult checkTranslation(ContextBank &bank, u32 iova, u32 physical, u32 pollBudget);
+ContextResult checkTranslationAccess(ContextBank &bank, u32 iova, u32 physical,
+    ContextAccess access, u32 pollBudget);
 ContextResult disableContext(ContextBank &bank, u32 pollBudget);
 
 }

@@ -30,3 +30,16 @@ done
   "$ROOT/drivers/NativeAdreno418/SmdMemory.cpp" \
   "$ROOT/drivers/NativeAdreno418/Test/check-smd-memory.cpp" -o "$OUT/check-smd-memory"
 "$OUT/check-smd-memory"
+"$CXX" -std=c++17 -Wall -Wextra -Werror -Wconversion -Wsign-conversion -fsanitize=address,undefined \
+  -I "$ROOT/drivers/NativeAdreno418" "${sources[@]}" \
+  "$ROOT/drivers/NativeAdreno418/RpmCore.cpp" "$ROOT/drivers/NativeAdreno418/SmdPipe.cpp" \
+  "$ROOT/drivers/NativeAdreno418/SmdMemory.cpp" "$ROOT/drivers/NativeAdreno418/RpmVotes.cpp" \
+  "$ROOT/drivers/NativeAdreno418/PowerController.cpp" "$ROOT/drivers/NativeAdreno418/A418Init.cpp" \
+  "$ROOT/drivers/NativeAdreno418/SmmuRoutes.cpp" "$ROOT/drivers/NativeAdreno418/GpuBatch.cpp" \
+  "$ROOT/drivers/NativeAdreno418/Test/check-gpu-batch.cpp" -o "$OUT/check-gpu-batch"
+"$OUT/check-gpu-batch"
+"$CXX" -std=c++17 -Wall -Wextra -Werror -Wconversion -Wsign-conversion -fsanitize=address,undefined \
+  -I "$ROOT/drivers/NativeAdreno418" \
+  "$ROOT/drivers/NativeAdreno418/RpmCore.cpp" "$ROOT/drivers/NativeAdreno418/RpmVotes.cpp" \
+  "$ROOT/drivers/NativeAdreno418/Test/check-rpm-votes.cpp" -o "$OUT/check-rpm-votes"
+"$OUT/check-rpm-votes"

@@ -1,0 +1,133 @@
+{
+  "date": "2026-10-27",
+  "status": "offline-validated-not-handset-qualified",
+  "source_files": {
+    "drivers/NativeAdreno418/A418Init.cpp": "ded9dca9a3a200d034f99c2015554106ce7750421e0172fa6882339f0525e22b",
+    "drivers/NativeAdreno418/A418Init.h": "4971eeef80fb1cdc5ce27ab788a9ee80d4e3a6cba79bf8a3bdb38dd37eafb182",
+    "drivers/NativeAdreno418/AdrenoCore.cpp": "386878cce4492575ca92f9d3199f6e9d23e1c95c7308a6d1fd2bd44a5e52d840",
+    "drivers/NativeAdreno418/AdrenoCore.h": "7699cf7a54d159a11c2f5d2731913c23930e6c3a2858abf3927a265da0aef005",
+    "drivers/NativeAdreno418/AdrenoTypes.h": "aea25711b03ef6b89257fcd91d76f4ae81b4570dae5ef153ebc6335c1c7718b3",
+    "drivers/NativeAdreno418/BoardConstants.h": "983eb7c62f2f26fb7e93abb7b31b1b86d2b6f20a71dbba84865ea1d6acd5ac7e",
+    "drivers/NativeAdreno418/CommandStream.cpp": "0d4fe26be625ab9c204eeb802bf037197b96e425f619603114760918505a6de4",
+    "drivers/NativeAdreno418/CommandStream.h": "705dbac8b86094dd942c7ffc52ae3341074da8d92e5b5f552b5310f10a73168f",
+    "drivers/NativeAdreno418/GpuBatch.cpp": "10f7046ce3d9fb461016ea0ba161425dff28b1da00bf2b2aee30d5c78bbc931b",
+    "drivers/NativeAdreno418/GpuBatch.h": "88759240d23c15f715dab38d48623b6b58a167b376cc6ea5853fe0a5015cef60",
+    "drivers/NativeAdreno418/GpuIo.cpp": "ba73c975056322f85eae0d673fa31d7375977ab31179a0207930ec119e026439",
+    "drivers/NativeAdreno418/GpuIo.h": "b9567b4309c5e6b2cc50ad5b06c8540190d92ab590165334a0933837e6f3cc15",
+    "drivers/NativeAdreno418/IommuCore.cpp": "861f5c5820b8716e3f3e0064fc582d03e83d5b79839097734dfaca1ba6dee5de",
+    "drivers/NativeAdreno418/IommuCore.h": "3a62955f90e026ff2b73afe61ec834744e75672195111c695068909d965e7126",
+    "drivers/NativeAdreno418/LpaeCore.cpp": "c16869cddcb4da3a375ab35726e610a2fcf0a00fdd6bc7f72623153dd48ad98c",
+    "drivers/NativeAdreno418/LpaeCore.h": "b355e9cc8249e9505fd1ec598c2ad5813699dc921280ce845b4242d701a28b8d",
+    "drivers/NativeAdreno418/NativeAdreno418.cpp": "c10ccf217358e7d8b8c2d41f481af559a88f8883f0c6e84aed8eda98a77737ee",
+    "drivers/NativeAdreno418/NativeAdreno418.h": "9e680ebf30db980719b7753a3397a3b0782b5a3483e9890c7b1f5f12a693ddbd",
+    "drivers/NativeAdreno418/PlatformCheck.cpp": "8d8b7cb50614a94d6334ff9a2e80d444d121e13cb8bfa9b11f5836f4b88cfcef",
+    "drivers/NativeAdreno418/PlatformCheck.h": "97772d68838de3de1f06effe93b48cd9c176ab133c6ad4424f33ee8a3ede711a",
+    "drivers/NativeAdreno418/PowerController.cpp": "0a765622e78e70afa88deecd183d20cedf43992c32de7563eb6b405f546757fb",
+    "drivers/NativeAdreno418/PowerController.h": "2ca96ab937d3f358f6d74112cbb7b605bd0c67ee2d5b8cac4058bda283c6d728",
+    "drivers/NativeAdreno418/RpmCore.cpp": "342dad1e35d8a2f37db34c7ebf662af706abfcef993594227d2b9433679f6257",
+    "drivers/NativeAdreno418/RpmCore.h": "1777b37f8a2b2cb8299ee5cfc8d1fca336eed044a69d254238ed182494d99d51",
+    "drivers/NativeAdreno418/RpmVotes.cpp": "9ce67ad6c7e63efe77dc57258d30d05c96614bbf8b8ca98dc4f231893314f2e8",
+    "drivers/NativeAdreno418/RpmVotes.h": "eda9ea7b6bdb7dd359e1ecc3aeb8810fcf1d7ebec67c971f7ba6806225bd1c80",
+    "drivers/NativeAdreno418/SmdMemory.cpp": "9c7574a460a8adaf476138d39fc44cd332e2e2d35b2463a6c12616f99afe6a03",
+    "drivers/NativeAdreno418/SmdMemory.h": "2d885cd20441df6e63ea20b15480da048fac32d33370b118479ba22f54b0c15b",
+    "drivers/NativeAdreno418/SmdPipe.cpp": "e0a1e83b31ce72b76f08b77bdf2438067cd50bede2526c5961d52e4da05590ec",
+    "drivers/NativeAdreno418/SmdPipe.h": "942d2a759c761fc1c0e421d25513b373146585d513f7eb4967ba3bbc7f7a08de",
+    "drivers/NativeAdreno418/SmmuContext.cpp": "491f521f60907706836ae86cf6c8fd49d0a1175fb7265eda1aeda4f6783c8ffd",
+    "drivers/NativeAdreno418/SmmuContext.h": "0d285f0474aa7561087e5e14a13f48fcc70cbd49eabc17aa3a56bcf30b377f63",
+    "drivers/NativeAdreno418/SmmuRoutes.cpp": "04cf944b65656c9e8fc7d279e2f3406892c56e243d0135a33402680432fdebd1",
+    "drivers/NativeAdreno418/SmmuRoutes.h": "421cba55c498f4b0a52eb2f8b36abcbafe6cbd997ed4ffe07d32e7d14cc53106",
+    "drivers/NativeAdreno418/Submission.cpp": "e73f933ed206a7a223472f3dd4fc2c6c3649dab0b398de70807e330167a18917",
+    "drivers/NativeAdreno418/Submission.h": "c5a8fb2e7be8f662540596d3264e6ac0b388159fc5913556719de50aa9cfae7c",
+    "drivers/NativeAdreno418/Test/check-adreno-core.cpp": "8109d00fdc5f67eb9b9395702b9cfc8593573c02e546d3228688bb19fdb2c7f5",
+    "drivers/NativeAdreno418/Test/check-gpu-backend.cpp": "3a79c9d4773a890e1e370e4269276973f449b3de072b5747445afd1852ac9aae",
+    "drivers/NativeAdreno418/Test/check-gpu-batch.cpp": "0d748363194261da33e450f9fcd2faa331988e50c76f76334e0b21d84c1f2043",
+    "drivers/NativeAdreno418/Test/check-rpm-votes.cpp": "549146a61810dcb1bf6b16c715783659b1ce72e1a7293f70fc1b9334b84008d1",
+    "drivers/NativeAdreno418/Test/check-rpm.cpp": "a996320f538ac953554048c05084685bccb75b79a921b347835b18d6e4f23da4",
+    "drivers/NativeAdreno418/Test/check-smd-memory.cpp": "d0b64954d7e2142bd6b2ac1b10a05a5e582fc5fac6d23522a076ef588066dfe9",
+    "scripts/build-probe.sh": "6186a2b76d011b2d0956c9b808d901ca7cb5a21363018233c95612e90eaf58f9",
+    "scripts/build-arm-driver.py": "96bf0dd9162aa8c7cac7d72d432bce78507ff446a066f8421b6154e6a3b339ac",
+    "scripts/test-gpu.sh": "c23af0031a0aaabfee915faf5de7d0143b8057e5b5ac41d4349c893d5bcb131c",
+    "scripts/test-probe.sh": "fb0a07d977ab60e09bb1cd31e66ab2c189a3cc2e466bf9e6ce915ef6a465a152",
+    "tools/uefi-probe/MemoryMove.c": "b6ac60198e994d856ef103e3c67a2f7a111742b2b275eb35f7fd5a6120a8f44b",
+    "tools/uefi-probe/Test/check-memory-move.c": "fe0025a95b2ceb25775bbc7888a4ec08974feddb594817a397d47ad590f90d39"
+  },
+  "tests": {
+    "sanitizers": [
+      "address",
+      "undefined"
+    ],
+    "integrated_gpu_model": {
+      "checks": 940,
+      "failures": 0
+    },
+    "leased_rpm_votes": {
+      "checks": 72,
+      "failures": 0
+    },
+    "existing_gpu_backend": {
+      "checks": 304,
+      "failures": 0
+    },
+    "rpm_smd": {
+      "checks": 190,
+      "failures": 0
+    },
+    "native_smd_memory": {
+      "checks": 820,
+      "failures": 0
+    },
+    "report_clock": {
+      "checks": 409,
+      "failures": 0
+    },
+    "firmware_smem": {
+      "checks": 66,
+      "failures": 0
+    },
+    "firmware_memory": {
+      "checks": 38,
+      "failures": 0
+    },
+    "firmware_gcd": {
+      "checks": 30,
+      "failures": 0
+    },
+    "storage_polling": {
+      "checks": 368,
+      "failures": 0
+    },
+    "gicv2": {
+      "checks": 168,
+      "failures": 0
+    },
+    "freestanding_memory_move": {
+      "checks": 6456321,
+      "failures": 0
+    },
+    "gpu_python_tools": {
+      "tests": 7,
+      "failures": 0
+    },
+    "probe_fat": {
+      "tests": 6,
+      "failures": 0
+    }
+  },
+  "arm64_coff_link_check": {
+    "filename": "gpu-batch-link-check.efi",
+    "bytes": 48128,
+    "sha256": "9183c06109cefaa91f2858728e490d17ba9a7b407ca25cc84159b9a0dd90a0d0",
+    "dead_stripping": false,
+    "runtime_entry": "existing RPM diagnostic, not GPU batch",
+    "installed": false
+  },
+  "hardware": {
+    "phone_written": false,
+    "gpu_powered": false,
+    "gpu_command_completed": false,
+    "gpu_rendered_frame": false,
+    "fps_measured": false,
+    "iOS_boot": false,
+    "platform_profile_qualified": false
+  }
+}

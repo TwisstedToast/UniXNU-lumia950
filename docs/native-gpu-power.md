@@ -4,6 +4,11 @@ The target remains an on-handset, GPU-rendered image and eventually the iOS comp
 A Windows Direct3D demo, a CPU-written EFI animation, and a 60 Hz panel setting do not
 demonstrate that native target. No native GPU-rendered frame or 60 FPS result exists yet.
 
+The [integrated command batch](native-gpu-batch.md) now joins this transport to leased
+power votes, A418 command-hardware setup, both SMMU contexts and fenced memory-write
+verification in one host-tested caller. It is not activated by the default driver or
+installed EFI test; its missing board/baseline/security qualifications remain explicit.
+
 ## Concrete dependency found
 
 The MSM8992 graphics branch is not its own frequency source. The pinned Qualcomm

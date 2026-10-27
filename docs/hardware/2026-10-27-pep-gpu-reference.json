@@ -1,0 +1,52 @@
+{
+  "schema": "lumia950-static-driver-observations-v1",
+  "date": "2026-10-27",
+  "device": "Lumia 950 / MSM8992",
+  "evidence_kind": "static tables in user-owned Windows driver, not live GPU or RPM state",
+  "acquisition": {
+    "volume": "Windows",
+    "partition_uuid": "87BD60CF-310C-4F0A-9F55-4C343256BF31",
+    "read_only": true,
+    "file": "qcpep8992.inf_arm64_8101853e844488d8/arm64/qcpep8992.sys",
+    "bytes": 1800680,
+    "sha256": "fda58326c3c92166dd1ac3ddd735de6332f0a1ed3f0c4d0ff3ac6d99e0a76120",
+    "redistribute_binary": false
+  },
+  "clock_remote_resource": {
+    "definition_va": "0x14012bab8",
+    "name_va": "0x140110440",
+    "name": "/clk/oxili",
+    "remote_descriptor_va": "0x140110450",
+    "resource_type_le": "0x326b6c63",
+    "resource_type_text": "clk2",
+    "resource_id": 1,
+    "protocol_name": "/protocol/rpm/rpm",
+    "units": "KHz",
+    "maximum_field": "0xffffffff",
+    "maximum_field_is_safe_rate": false
+  },
+  "other_named_objects": {
+    "gfx_rail_resource_va": "0x140125c10",
+    "gfx_rail_name": "/pmic/client/rail_gfx",
+    "gfx_rail_units": "ModeID",
+    "gfx_rail_maximum_field": 1,
+    "gfx_rail_node_va": "0x140125d40",
+    "gfx_rail_node_name": "/node/pmic/client/rail_gfx",
+    "gfx_rail_callback_va": "0x140052af0",
+    "gfx_rail_callback_observation": "This individual callback returns its requested state; it does not by itself identify a regulator vote or establish that the complete rail path is a no-op.",
+    "oxili_definition_va": "0x14012d0a8",
+    "oxili_name": "VDD_OXILI",
+    "oxili_register_offset_field": "0xc4024",
+    "gfx3d_clock_name": "oxili_gfx3d_clk",
+    "gfx3d_clock_register_offset_fields": ["0xc4028", "0xc4020"]
+  },
+  "qualification": {
+    "clock_resource_static_mapping_confirmed": true,
+    "live_resource_baselines_known": false,
+    "voltage_or_corner_sequence_qualified": false,
+    "memory_bus_profile_qualified": false,
+    "native_gpu_power_on_executed": false,
+    "native_gpu_command_completed": false,
+    "handset_written_during_collection": false
+  }
+}
