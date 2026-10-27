@@ -2199,6 +2199,28 @@ new file mode 100644
 + }
 + 
 + vm_offset_t
+diff --git a/patches/xnu-8796/native-build-flags.patch b/patches/xnu-8796/native-build-flags.patch
+new file mode 100644
+--- /dev/null
++++ b/patches/xnu-8796/native-build-flags.patch
+@@ -0,0 +1,17 @@
++--- a/makedefs/MakeInc.def
+++++ b/makedefs/MakeInc.def
++@@ -560,6 +560,7 @@
++ 		  $(DEPLOYMENT_TARGET_FLAGS) \
++ 		  $(DEPLOYMENT_TARGET_DEFINES) \
++ 		  $(BOUND_CHECKS_DEFINES) \
++ 		  $(DEFINES)
+++CFLAGS += $(CFLAGS_EXTRA)
++ 
++ #
++@@ -612,5 +613,6 @@
++ 		  $(DEPLOYMENT_TARGET_FLAGS) \
++ 		  $(DEPLOYMENT_TARGET_DEFINES) \
++ 		  $(DEFINES)
+++SFLAGS += $(SFLAGS_EXTRA)
++ 
++ #
 diff --git a/scripts/build-xnu-4k-baseline.sh b/scripts/build-xnu-4k-baseline.sh
 index 5815dd9..9c07ddc 100755
 --- a/scripts/build-xnu-4k-baseline.sh

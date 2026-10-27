@@ -109,8 +109,10 @@ jobs:
           source=https://raw.githubusercontent.com/apple-oss-distributions/xnu/1b191cb58250d0705d8a51287127505aa4bc0789
           curl -fsSL "$source/pexpert/arm/pe_identify_machine.c" -o work/clock-reference/pe_identify_machine.c
           curl -fsSL "$source/osfmk/arm64/machine_routines.c" -o work/clock-reference/machine_routines.c
+          curl -fsSL "$source/makedefs/MakeInc.def" -o work/clock-reference/MakeInc.def
           python3 scripts/test-native-clocks.py --identify work/clock-reference/pe_identify_machine.c \
               --routines work/clock-reference/machine_routines.c
+          python3 scripts/test-xnu-build-flags.py --make-def work/clock-reference/MakeInc.def
 
       - name: The 16.x patch line has no holes
         # feeds.toml moves the build to xnu-8796.141.3, and UniXNU carries that line's patch

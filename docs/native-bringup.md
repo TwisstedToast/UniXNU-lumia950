@@ -157,3 +157,9 @@ that candidate remains explicitly unqualified and is not staged here.
 The 16.x build seals the real `mach.development.bcm2837.unstripped` output; this
 line has no 17.x `.noctf` artifact. The integrity-sealing step is retained, not
 skipped to work around the different output filename.
+The overlay also carries `CFLAGS_EXTRA`/`SFLAGS_EXTRA` into the 8796 make rules:
+unlike the 17.x rules the base script targets, the original 16.x rules silently
+ignored these variables. A linked archive alone therefore did not establish that
+its source bootstrap was compiled. The make-expansion regression and mandatory
+bootstrap-symbol/POST-field checks now catch that difference before accepting an
+image. Runtime source-provider POST remains a separate required observation.
