@@ -35,6 +35,20 @@ metadata sidecars after creation; verification caught this before any phone
 writes. Keeping the exact original sidecar bytes inside the archive prevents
 macOS from treating them as live metadata while retaining them for recovery.
 
+`scripts/update-native-bringup.py` updates an **exactly matched previous stage**,
+not an arbitrary existing EFI directory. Both stages must pass the same hashes,
+source-kernel integrity checks and explicit-choice menu contract. Only the
+experimental GPU image, kernel, ADT and manifest may change; loader, fallback,
+BCD, BootShim and firmware must remain byte-identical. The existing USB root flag
+is checked first. The update archives and verifies all nonmetadata files on the
+separate SSD, deliberately never opening macOS AppleDouble/cache files after the
+observed FAT vnode aliasing issue. Its report explicitly names that scope.
+With less than one spare kernel's worth of space, only the backed-up experimental
+kernel is removed before replacement. This part is not atomic: interruption can
+leave that experimental entry unavailable, while the unchanged menu's default
+still exits to firmware. `--previous-stage` and a verified SSD backup are required;
+dry-run remains the default. The original full archive/rescue is retained separately.
+
 ## Native hardware activation
 
 This is the first EFI caller of the GPU power and A418 command-hardware code. It
@@ -60,13 +74,25 @@ Its steps are:
   static Lumia board constraint. Existing adequate higher voltage is retained;
   unknown regulator/range/pin policy is refused. Only `0x1741`, `0x1745`, `0x1746`
   accept narrowly allowed native writes. No other PMIC rail is writable here.
-- Request **clk2, ID 1, KHz=19200** through a correlated native RPM transaction.
+- Request **clk2, ID 1, KHz=19200** through a correlated native RPM transaction
+  **before** establishing the direct graphics voltage.
   This dedicated graphics resource is used only after exclusive cold-GPU ownership;
   it is pinned, not restored to a guessed prior baseline. The APPS graphics vote
   may change. Shared configuration/memory-bus votes are deliberately **untouched**.
-  Re-read the actual graphics supply after the clock ACK; an inadequate or changed
-  regulator policy stops before domain/branch enable instead of trusting stale data.
+  The first handset run reached this ACK but then read only **700000 microvolts**,
+  despite the earlier 980000-microvolt verification in that run's control flow.
+  It stopped before domain, branch, GPU or SMMU activation. This demonstrates a
+  stale supply dependency, not which remote component changed the selector.
+  The revised fixed-rate handoff therefore completes the one clock request first,
+  then reads/establishes the direct supply once. It requires **64 unchanged ready
+  snapshots, spaced 250 microseconds apart**, under one bounded SPMI poll budget.
+  A competing voltage/mode/enable change invalidates readiness; it is never fought
+  with repeated supply writes. No further RPM request is issued after establishment.
+  Unknown pin policies and missing ACKs stop before any direct supply writes.
 - Enable the OxiLi domains, retention and three branches using bounded polls.
+  Revalidate the same actual supply before opening GPU register access and again
+  after command-hardware initialization. An invalidated rail remains pinned and
+  cannot be silently requalified/retried in this run.
   Read actual GPU identity, hold/program the A418 command hardware, and inspect
   inherited SMMU routing without modifying global routes, security or context banks.
 - Display the actual completion/failure stage and register values. Recoverable
@@ -84,10 +110,14 @@ The result screen is CPU-drawn diagnostics. No microcode queue, DMA destination,
 shader, GPU-rendered image, measured FPS or iOS support is claimed by this test.
 SMMU routing may remain unsupported even after command hardware initialization.
 Actual handset results must be recorded separately from host tests and EFI builds.
+The revised ordering is an experimental fixed-clock configuration-access path,
+not proof of permanent remote voltage ownership, dynamic frequency scaling or a
+DMA/rendering qualification. The recorded handset stop and host-only follow-up
+are in `docs/hardware/2026-10-27-native-gpu-supply.json`.
 All numbers on this diagnostic screen are hexadecimal. `PMIC TYPE/SUB` packs
 type then subtype in two bytes; `RAIL IN/OUT CFG` packs range, voltage selector,
 mode and enable in four bytes. Raw PMIC status, A418 last register/value and ELR
-are retained alongside SMMU identifiers and the first four stream slots so a
+are retained alongside SMMU identifiers, cumulative stable-supply samples and the first four stream slots so a
 single full-screen photo captures the failing configuration. Unreached fields
 remain zero and are not represented as successful hardware reads.
 
@@ -169,7 +199,7 @@ peripheral nodes explicitly reference it. These are registry references, not
 guessed physical interrupt routes or proof of device IRQ delivery. The native
 drivers remain polling/identity bring-up. `--crypto-post` observes the real
 provider entry/return and status, stopping on intervening traps or a bounded
-timeout; no successful runtime POST or completed IOKit/iOS boot is claimed yet.
+timeout; a sealed field or a timeout alone is never accepted as POST success.
 The kernel menu entry is explicitly experimental, not a ready iOS installation.
 The next exception was traced to `sha1_init`, ELR `0xfffffff00785dbb8`, FAR `0x28`:
 the real crypto dispatch table was still unregistered. In this 16.x startup order,
@@ -177,7 +207,18 @@ the real crypto dispatch table was still unregistered. In this 16.x startup orde
 source-provider overlay therefore schedules the unchanged full POST/bootstrap at
 `SYSCTL` rank last, after its allocator/locks/thread-call prerequisites but before
 IOKit. This changes initialization order, not crypto implementations or checks;
-its runtime result must be observed before declaring that blocker resolved.
+the runtime result is established separately from the build and static sealing.
+
+That corrected kernel is now built successfully in CI run `40498673285`, source
+`9cfe75c`, SHA-256 `03e48c7ce3ae3365e168da14be30488401d96d9e658858be7186f55ccc68db5d`.
+An actual A53/GICv2 run observes VM entry/return, then the real source crypto
+bootstrap entry/return with **status 0**, then `PE_init_iokit` entry/return. The
+observation tool's `--finish-iokit` requires all six milestones in that order;
+no guest instruction, kernel return value, POST or exception is patched to pass.
+The QEMU CPU is now explicitly configured with `cntfrq=19200000`, and the test
+independently reads `CNTFRQ_EL0` to reject a frequency mismatch with the ADT.
+These are emulator initialization milestones, not completed driver matching,
+a mounted root filesystem, handset XNU execution or iOS userspace.
 
 The source-only configuration also selects the actual source crypto initializer.
 It cannot wait for a prelinked provider that is absent from this image. This does

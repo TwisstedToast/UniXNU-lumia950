@@ -1,0 +1,67 @@
+{
+  "schema": "lumia950-handset-gpu-result-v1",
+  "date": "2026-10-27",
+  "evidence_kind": "User photograph of the actual post-ExitBootServices native test; not an emulator result",
+  "photograph": {
+    "filename": "PXL_20261027_115409875.jpg",
+    "sha256": "7847fc1f0f02f8141465fbaf2e349e37ff06f16e97b670353afa937b42f46e1a",
+    "redistributed": false
+  },
+  "installed_gpu_efi_sha256": "b5480de11d7913457c599532049d3e8f169712da905309d7383bfaf66624e37b",
+  "final_heading": "NATIVE GPU ACTIVATION STOPPED",
+  "final_stage": "RECHECKING SUPPLY AFTER RPM ACK",
+  "supply_result": "UNQUALIFIED",
+  "native_clock_result": "OK",
+  "raw_hex": {
+    "rail_microvolts": "000aae60",
+    "spmi_status": "00000001",
+    "spmi_version": "20000002",
+    "spmi_last_command": "08317460",
+    "power_result": "00000003",
+    "gx_gdscr": "00282001",
+    "cx_gdscr": "00282001",
+    "core_cbcr": "80000ff0",
+    "ahb_cbcr": "80008000",
+    "timer_cbcr": "80000000",
+    "pmic_type_subtype": "00001c09",
+    "rail_initial_configuration": "007c4000",
+    "rail_final_configuration": "007c8080",
+    "rail_initial_status": "00000000",
+    "rail_final_status": "00000083",
+    "abort_esr": "00000000",
+    "abort_far": "00000000",
+    "abort_elr": "00000000"
+  },
+  "interpretation": {
+    "native_spmi_transactions_succeeded": true,
+    "expected_pmi8994_regulator_identity_observed": true,
+    "native_graphics_clock_correlated_ack_observed": true,
+    "post_ack_graphics_voltage_microvolts": 700000,
+    "domains_remained_collapsed": true,
+    "initial_980mv_verification_inferred_from_executed_control_flow": true,
+    "initial_980mv_value_separately_photographed": false,
+    "voltage_owner_identified": false,
+    "unreached_zero_gpu_and_smmu_fields_are_not_register_observations": true
+  },
+  "next_test": {
+    "efi_sha256": "6810794447b63594135743d42bd6a438ff01c7847cc49a40ebe87e4be97bba54",
+    "efi_bytes": 51712,
+    "change": "Complete the single fixed graphics clock vote before establishing the direct board-constrained supply",
+    "minimum_microvolts_unchanged": 980000,
+    "stability_samples": 64,
+    "sample_delay_microseconds": 250,
+    "writes_after_competing_voltage_change": false,
+    "clock_changes_after_supply_establishment": false,
+    "additional_supply_checks": "After domain/branch activation before GPU access, and after command-hardware initialization",
+    "global_remote_voltage_ownership_claimed": false,
+    "handset_result_observed": false
+  },
+  "not_established": {
+    "gpu_power_on": true,
+    "gpu_register_identity": true,
+    "gpu_command_completion": true,
+    "gpu_rendered_frame": true,
+    "60fps": true,
+    "handset_ios_boot": true
+  }
+}

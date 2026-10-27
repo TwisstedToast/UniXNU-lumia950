@@ -3,8 +3,10 @@ import argparse
 import contextlib
 import importlib.util
 import io
+import hmac
 import json
 from pathlib import Path
+import shutil
 import tempfile
 import tarfile
 import unittest
@@ -17,6 +19,9 @@ SPEC.loader.exec_module(INSTALL)
 FIXTURE_SPEC = importlib.util.spec_from_file_location("native_fixture", Path(__file__).with_name("test-native-bringup.py"))
 FIXTURE = importlib.util.module_from_spec(FIXTURE_SPEC)
 FIXTURE_SPEC.loader.exec_module(FIXTURE)
+UPDATE_SPEC = importlib.util.spec_from_file_location("native_update", Path(__file__).with_name("update-native-bringup.py"))
+UPDATE = importlib.util.module_from_spec(UPDATE_SPEC)
+UPDATE_SPEC.loader.exec_module(UPDATE)
 
 
 class NativeInstallTests(unittest.TestCase):
@@ -58,7 +63,8 @@ class NativeInstallTests(unittest.TestCase):
             "Internal": False, "DeviceIdentifier": "disk9"}
         for replacement in [patch.object(INSTALL, "PHONE", self.phone), patch.object(INSTALL, "BACKUP_VOLUME", self.ssd),
             patch.object(INSTALL, "CRITICAL", self.critical), patch.object(INSTALL, "disk_info", self.disk_info),
-            patch.object(INSTALL.time, "sleep", lambda _: None), patch.object(INSTALL.os, "sync", lambda: None)]:
+            patch.object(INSTALL.time, "sleep", lambda _: None), patch.object(INSTALL.os, "sync", lambda: None),
+            patch.object(UPDATE, "INSTALL", INSTALL)]:
             replacement.start()
             self.addCleanup(replacement.stop)
         self.args = argparse.Namespace(stage=self.stage, volume_uuid="expected-volume", partition_uuid="expected-partition",
@@ -158,6 +164,121 @@ class NativeInstallTests(unittest.TestCase):
         (self.phone / "EFI/UniXNU").mkdir()
         with self.assertRaisesRegex(ValueError, "already exists"):
             self.run_install()
+
+    def prepare_update(self):
+        (self.phone / UPDATE.ROOT_FLAG).write_bytes(b"USB\r\n")
+        self.run_install()
+        self.args.previous_stage = self.root / "previous-stage"
+        shutil.copytree(self.stage, self.args.previous_stage)
+        self.before_update = self.contents(self.phone)
+        self.set_file("EFI/UniXNU/Drivers/LumiaGpuPower.efi", b"new native GPU binary")
+        kernel = FIXTURE.crypto_image()
+        kernel[1032] ^= 1
+        kernel[1536:1568] = hmac.digest(b"\0", kernel[1024:1280], "sha256")
+        self.set_file(UPDATE.KERNEL, bytes(kernel))
+        self.save_manifest()
+
+    def run_update(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            UPDATE.update(self.args)
+
+    def test_update_verifies_previous_stage_and_preserves_boot_chain(self):
+        self.prepare_update()
+        self.run_update()
+        backup = next(self.args.backup_root.glob("native-update-*"))
+        with tarfile.open(backup / "EFIESP.tar", "r:") as archive:
+            self.assertEqual({name: archive.extractfile(name).read() for name in archive.getnames()}, self.before_update)
+        self.assertEqual((self.phone / "EFI/boot/BOOTAA64.EFI").read_bytes(), self.before_update["EFI/boot/BOOTAA64.EFI"])
+        for name, data in self.before_update.items():
+            if name not in UPDATE.UPDATABLE:
+                self.assertEqual((self.phone / name).read_bytes(), data)
+        self.assertEqual((self.phone / UPDATE.KERNEL).read_bytes(), (self.stage / UPDATE.KERNEL).read_bytes())
+        self.assertTrue(json.loads((backup / "updated.json").read_text())["original_other_nonmetadata_files_preserved"])
+
+    def test_update_dry_run_and_changed_previous_payload_never_write(self):
+        self.prepare_update()
+        self.args.apply = False
+        self.run_update()
+        self.assertEqual(self.contents(self.phone), self.before_update)
+        self.args.apply = True
+        target = self.phone / "EFI/UniXNU/Drivers/LumiaGpuPower.efi"
+        target.write_bytes(b"different handset payload")
+        before = self.contents(self.phone)
+        with self.assertRaisesRegex(ValueError, "differs from.*previous stage"):
+            self.run_update()
+        self.assertEqual(self.contents(self.phone), before)
+        self.assertFalse(list(self.args.backup_root.glob("native-update-*")))
+
+    def test_update_cannot_change_fallback_or_unexpected_native_files(self):
+        self.prepare_update()
+        unexpected = self.phone / "EFI/UniXNU/unexpected.efi"
+        unexpected.write_bytes(b"untracked")
+        with self.assertRaisesRegex(ValueError, "unexpected existing native tree"):
+            self.run_update()
+        unexpected.unlink()
+        for name in ["EFI/BOOT/BOOTAA64.EFI", "EFI/UniXNU/UniXNU.efi"]:
+            self.set_file(name, b"different boot chain")
+        self.save_manifest()
+        with self.assertRaisesRegex(ValueError, "only experimental"):
+            self.run_update()
+        self.assertEqual(self.contents(self.phone), self.before_update)
+
+    def test_update_skips_macos_metadata_without_opening_it(self):
+        self.prepare_update()
+        sidecar = self.phone / "EFI/._UniXNU"
+        sidecar.write_bytes(b"metadata alias must never be opened")
+        original_reader = Path.read_bytes
+
+        def refuse_metadata(source):
+            if UPDATE.metadata(source.name):
+                raise AssertionError("opened a macOS metadata sidecar")
+            return original_reader(source)
+
+        with patch.object(Path, "read_bytes", refuse_metadata):
+            self.run_update()
+        backup = next(self.args.backup_root.glob("native-update-*"))
+        with tarfile.open(backup / "EFIESP.tar", "r:") as archive:
+            self.assertNotIn("EFI/._UniXNU", archive.getnames())
+        self.assertIn("EFI/._UniXNU", json.loads((backup / "updated.json").read_text())["excluded_metadata_paths"])
+        self.assertEqual(sidecar.read_bytes(), b"metadata alias must never be opened")
+
+    def test_update_backup_failure_keeps_every_phone_file(self):
+        self.prepare_update()
+        with patch.object(INSTALL, "write_verified", side_effect=OSError("backup unavailable")):
+            with self.assertRaisesRegex(OSError, "backup unavailable"):
+                self.run_update()
+        self.assertEqual(self.contents(self.phone), self.before_update)
+
+    def test_update_low_space_releases_only_the_backed_up_experimental_kernel(self):
+        self.prepare_update()
+        self.volume["FreeSpace"] = 1024 * 1024 + 2048
+        original_writer = INSTALL.write_verified
+        kernel_existed_at_write = []
+
+        def record_kernel_write(destination, data):
+            if destination == self.phone / UPDATE.KERNEL:
+                kernel_existed_at_write.append(destination.exists())
+            original_writer(destination, data)
+
+        with patch.object(INSTALL, "write_verified", record_kernel_write):
+            self.run_update()
+        self.assertEqual(kernel_existed_at_write, [False])
+        backup = next(self.args.backup_root.glob("native-update-*"))
+        with tarfile.open(backup / "EFIESP.tar", "r:") as archive:
+            self.assertEqual(archive.extractfile(UPDATE.KERNEL).read(), self.before_update[UPDATE.KERNEL])
+        self.assertTrue(json.loads((backup / "updated.json").read_text())["non_atomic_kernel_replacement_after_backup"])
+        self.assertEqual((self.phone / "EFI/boot/BOOTAA64.EFI").read_bytes(), self.before_update["EFI/boot/BOOTAA64.EFI"])
+
+    def test_update_wrong_boot_flag_and_insufficient_space_refused(self):
+        self.prepare_update()
+        (self.phone / UPDATE.ROOT_FLAG).write_bytes(b"changed")
+        with self.assertRaisesRegex(ValueError, "USB boot flag"):
+            self.run_update()
+        (self.phone / UPDATE.ROOT_FLAG).write_bytes(b"USB\r\n")
+        self.volume["FreeSpace"] = 1024
+        with self.assertRaisesRegex(ValueError, "not enough EFIESP"):
+            self.run_update()
+        self.assertEqual(self.contents(self.phone), self.before_update)
 
 
 if __name__ == "__main__":

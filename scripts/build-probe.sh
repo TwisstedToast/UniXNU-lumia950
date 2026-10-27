@@ -32,7 +32,7 @@ for component in ProbeCore FramebufferCore MemoryMove LumiaProbe LumiaHandoff Te
     -c "$ROOT/tools/uefi-probe/$component.c" -o "$OUT/objects/$object_name.obj"
 done
 
-for component in AdrenoCore IommuCore CommandStream GpuIo LpaeCore SmmuContext Submission PlatformCheck RpmCore SmdPipe SmdMemory RpmVotes PowerController SpmiCore A418Init SmmuRoutes GpuBatch; do
+for component in AdrenoCore IommuCore CommandStream GpuIo LpaeCore SmmuContext Submission PlatformCheck RpmCore SmdPipe SmdMemory RpmVotes PowerController SpmiCore PinnedGraphics A418Init SmmuRoutes GpuBatch; do
   "$CLANG" --target=aarch64-pc-windows-msvc -std=c++17 -Os \
     -ffreestanding -fno-builtin -fno-stack-protector -fshort-wchar \
     -fno-exceptions -fno-rtti -mno-stack-arg-probe -mgeneral-regs-only -mstrict-align \
@@ -79,7 +79,7 @@ for application in LumiaProbe LumiaHandoff LumiaGpuProbe LumiaRpmHandoff LumiaGp
     application_objects+=("$OUT/objects/SmdMemory.obj" "$OUT/objects/SmdPipe.obj")
   fi
   if [ "$application" = LumiaGpuPower ]; then
-    for component in MemoryMove NativeMmio AdrenoCore GpuIo RpmCore RpmVotes PowerController SpmiCore A418Init SmmuRoutes; do
+    for component in MemoryMove NativeMmio AdrenoCore GpuIo RpmCore RpmVotes PowerController SpmiCore PinnedGraphics A418Init SmmuRoutes; do
       application_objects+=("$OUT/objects/$component.obj")
     done
   fi
@@ -96,7 +96,7 @@ done
 batch_objects=()
 for component in LumiaRpmHandoff ProbeCore FramebufferCore MemoryMove PlatformCheck ReportStore FirmwareSmem FirmwareMemory FirmwareGcd \
   AdrenoCore CommandStream GpuIo LpaeCore SmmuContext Submission RpmCore SmdPipe SmdMemory \
-  RpmVotes PowerController SpmiCore A418Init SmmuRoutes GpuBatch; do
+  RpmVotes PowerController SpmiCore PinnedGraphics A418Init SmmuRoutes GpuBatch; do
   batch_objects+=("$OUT/objects/$component.obj")
 done
 "$LINKER" /machine:arm64 /subsystem:efi_application /entry:UefiMain \

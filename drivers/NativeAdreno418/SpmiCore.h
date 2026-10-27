@@ -47,6 +47,7 @@ struct Rail {
     bool ready;
     bool changed;
     bool pinned;
+    u32 stableSamples;
 };
 
 Result bind(Bus &bus, const Io &io, bool firmwareExited, bool exclusiveChannel);
@@ -54,6 +55,7 @@ Result readByte(Bus &bus, u8 slave, u16 address, u8 &value, u32 polls);
 Result writeGraphicsByte(Bus &bus, u16 address, u8 value, u32 polls);
 Result inspectGraphicsRail(Bus &bus, RailSnapshot &snapshot, u32 polls);
 Result enableGraphicsRail(Bus &bus, Rail &rail, bool gpuCollapsed, u32 polls);
+Result verifyGraphicsRail(Bus &bus, Rail &rail, u32 samples, u32 delayUs, u32 polls);
 const char *resultName(Result result);
 
 }

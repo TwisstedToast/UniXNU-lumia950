@@ -2,13 +2,14 @@
   "date": "2026-10-27",
   "evidence_kind": "Actual ARM64 kernel instruction breakpoints in QEMU, not handset or image-pixel inference",
   "environment": {
-    "cpu": "cortex-a53",
+    "cpu": "cortex-a53,cntfrq=19200000",
     "cpu_count": 1,
     "gic_version": 2,
     "memory_mib": 768,
     "display": "ramfb",
     "esp_access": "private read-only VM copy",
     "dt_timebase_hz": 19200000,
+    "observed_cntfrq_el0_hz": 19200000,
     "accurate_hardware_timing_qualified": false
   },
   "original_failure": {
@@ -21,11 +22,11 @@
     "cause": "pe_identify_machine returned for the valid zero-base identity bus before reading the timebase"
   },
   "sealed_source_build": {
-    "ci_run": "https://github.com/TwisstedToast/UniXNU-lumia950/actions/runs/40493229820",
-    "source_commit": "8742e3878f96c64935d187cd05d21c7254df5884",
+    "ci_run": "https://github.com/TwisstedToast/UniXNU-lumia950/actions/runs/40498673285",
+    "source_commit": "9cfe75c34f4de75e56f8be31bdbb4ae7a9321dfc",
     "ci_conclusion": "success",
-    "artifact_sha256": "778693bffb94b9c44c5232aa6477005f03b9b1b854bcf3e84cde95b458efa144",
-    "kernel_sha256": "f1bc3ace0eb4676a48327caaeae58ab23ee0e382bac09bcb4589c6ef210ee58e",
+    "artifact_sha256": "f7160ece1fa0feda48f6575f76d1ffaa910ccca8997299cba268bd150f72551d",
+    "kernel_sha256": "03e48c7ce3ae3365e168da14be30488401d96d9e658858be7186f55ccc68db5d",
     "kernel_bytes": 18670288,
     "source_provider_symbols_present": true,
     "post_integrity_hmac_verified": true,
@@ -37,10 +38,17 @@
     "arm_vm_init_return_observed": true,
     "vm_caller_return_pc": "0xfffffff0079b9fb0",
     "mandatory_empty_memory_map_node_required": true,
-    "runtime_crypto_post_success_observed": false
+    "runtime_crypto_post_success_observed": true,
+    "crypto_bootstrap_return_pc": "0xfffffff007990cd0",
+    "source_crypto_status": 0,
+    "iokit_initialization_entry_observed": true,
+    "iokit_initialization_return_observed": true,
+    "iokit_caller_return_pc": "0xfffffff0079910cc",
+    "observed_order": ["arm_vm_init_entry", "arm_vm_init_return", "source_crypto_bootstrap_entry", "source_crypto_bootstrap_return", "iokit_entry", "iokit_return"]
   },
   "not_established": {
-    "completed_iokit_initialization": true,
+    "completed_iokit_driver_matching": true,
+    "root_filesystem_mounted": true,
     "handset_xnu_boot": true,
     "ios_userspace_boot": true,
     "native_gpu_frame": true,

@@ -15,6 +15,7 @@
 #include "BoardConstants.h"
 #include "PowerController.h"
 #include "SpmiCore.h"
+#include "PinnedGraphics.h"
 #include "SmmuRoutes.h"
 extern "C" bool NativeGuardedRead(UINT64, UINT32 *);
 extern "C" bool NativeGuardedWrite(UINT64, UINT32);

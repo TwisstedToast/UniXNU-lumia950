@@ -141,11 +141,15 @@ def run(args):
         raise ValueError("required real XNU symbols are missing")
     if args.crypto_post:
         STAGE.crypto_contract(original)
+    if args.finish_iokit and "_PE_init_iokit" not in names:
+        raise ValueError("real IOKit initialization symbol is missing")
     stops = {name: address for name, address in names.items() if
         name.startswith("___ubsan_handle_") or name in (
             "_arm_vm_init", "_panic", "_panic_with_options", "_fleh_synchronous", "_sleh_synchronous_sp1")}
     if args.crypto_post:
         stops["_source_corecrypto14_bootstrap"] = names["_source_corecrypto14_bootstrap"]
+    if args.finish_iokit:
+        stops["_PE_init_iokit"] = names["_PE_init_iokit"]
     output = args.output.resolve()
     if output.exists():
         raise ValueError("use a new output directory to preserve earlier evidence")
@@ -154,7 +158,9 @@ def run(args):
         "handset_boot_observed": False, "ios_userspace_booted": False, "gpu_frame_observed": False,
         "kernel_sha256": hashlib.sha256(original).hexdigest(), "arm_vm_init_entry_observed": False,
         "arm_vm_init_return_observed": False,
+        "architectural_counter_hz": 19200000,
         "source_crypto_bootstrap_return_observed": False,
+        "iokit_return_observed": False,
         "source_crypto_bootstrap_symbols_present": set(STAGE.contract(original)["source_crypto_symbols"]) == STAGE.CRYPTO_SYMBOLS}
     with tempfile.TemporaryDirectory(prefix="lumia-xnu-", dir="/tmp") as temporary:
         directory = Path(temporary)
@@ -167,7 +173,7 @@ def run(args):
             raise ValueError("expected the explicit non-autoboot bring-up menu")
         config.write_text(text)
         endpoint = directory / "gdb.sock"
-        command = [args.qemu, "-machine", "virt,gic-version=2", "-cpu", "cortex-a53", "-smp", "1",
+        command = [args.qemu, "-machine", "virt,gic-version=2", "-cpu", "cortex-a53,cntfrq=19200000", "-smp", "1",
             "-m", "768", "-bios", str(args.firmware.resolve()), "-display", "none", "-serial", "stdio",
             "-monitor", "none", "-nic", "none", "-no-reboot", "-device", "ramfb", "-S",
             "-gdb", f"unix:{endpoint},server=on,wait=off",
@@ -191,6 +197,8 @@ def run(args):
                     entries = {names["_arm_vm_init"]: "arm_vm_init"}
                     if args.crypto_post:
                         entries[names["_source_corecrypto14_bootstrap"]] = "source_crypto_bootstrap"
+                    if args.finish_iokit:
+                        entries[names["_PE_init_iokit"]] = "iokit"
                     returns = {}
                     report["milestones"] = []
                     for _ in range(8):
@@ -231,7 +239,8 @@ def run(args):
                             if request(connection, f"z1,{current:x},4") != b"OK":
                                 raise ValueError("could not retire the return breakpoint")
                             if report["arm_vm_init_return_observed"] and \
-                                (not args.crypto_post or report["source_crypto_bootstrap_return_observed"]):
+                                (not args.crypto_post or report["source_crypto_bootstrap_return_observed"]) and \
+                                (not args.finish_iokit or report["iokit_return_observed"]):
                                 break
                         else:
                             break
@@ -252,14 +261,23 @@ def run(args):
                     process.kill()
                     process.wait()
                 (output / "report.json").write_text(json.dumps(report, indent=2) + "\n")
+    if report.get("system_registers", {}).get("cntfrq_el0") != hex(report["architectural_counter_hz"]):
+        raise ValueError("the emulated architectural counter does not match the Lumia device-tree frequency")
     if not report["arm_vm_init_entry_observed"] or report["wfe_event_index"] != 4 or \
         args.finish_vm and not report["arm_vm_init_return_observed"]:
         raise ValueError(f"early native kernel boot stopped before VM setup: {report.get('stop_symbols')}; see {output}")
     if args.crypto_post and (not report["source_crypto_bootstrap_return_observed"] or report.get("source_crypto_status") != 0):
         raise ValueError(f"real source-provider initialization did not complete successfully: {report.get('stop_symbols')}; see {output}")
+    if args.finish_iokit and not report["iokit_return_observed"]:
+        raise ValueError(f"real IOKit initialization did not return: {report.get('stop_symbols')}; see {output}")
+    if args.finish_iokit and report["milestones"] != ["arm_vm_init_entry", "arm_vm_init_return",
+        "source_crypto_bootstrap_entry", "source_crypto_bootstrap_return", "iokit_entry", "iokit_return"]:
+        raise ValueError("IOKit must initialize after the actual successful source crypto bootstrap")
     milestone = "returned from arm_vm_init" if args.finish_vm else "reached arm_vm_init entry"
     if args.crypto_post:
         milestone += " and the real source-provider POST/bootstrap"
+    if args.finish_iokit:
+        milestone += " and PE_init_iokit"
     print(f"PASS: real source XNU passed clock/WFE/topology setup and {milestone}; {output}")
     print("EMULATION ONLY. Handset boot, iOS userspace and GPU rendering are not proven.")
 
@@ -274,7 +292,10 @@ def main():
     parser.add_argument("--timeout", default=90, type=float)
     parser.add_argument("--finish-vm", action="store_true", help="Also require a real return to the saved VM caller; stop on intervening faults")
     parser.add_argument("--crypto-post", action="store_true", help="After VM, observe the actual source provider return and KERN_SUCCESS status; no overrides")
+    parser.add_argument("--finish-iokit", action="store_true", help="Also require actual IOKit initialization entry/return after the real crypto POST")
     args = parser.parse_args()
+    if args.finish_iokit:
+        args.crypto_post = True
     if args.crypto_post:
         args.finish_vm = True
     if not 1 <= args.timeout <= 300:

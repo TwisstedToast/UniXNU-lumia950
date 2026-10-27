@@ -139,6 +139,27 @@ Result enableGraphicsRail(Bus &bus, Rail &rail, bool gpuCollapsed, u32 polls)
     return fail(bus, Result::TimedOut);
 }
 
+Result verifyGraphicsRail(Bus &bus, Rail &rail, u32 samples, u32 delayUs, u32 polls)
+{
+    if (bus.state != State::Ready || !rail.pinned || !rail.ready) { return Result::NotReady; }
+    if (!samples || samples > 256 || delayUs > 1000 || !polls || polls > 100000 ||
+        static_cast<u64>(samples) * delayUs > 250000 ||
+        rail.stableSamples > 0xffffffffu - samples) { return Result::Invalid; }
+    const RailSnapshot expected = rail.final;
+    rail.ready = false;
+    for (u32 index = 0; index < samples; ++index) {
+        bus.io.delayUs(bus.io.context, delayUs);
+        const Result result = inspect(bus, rail.final, polls);
+        if (result != Result::Ok) { return result; }
+        if (!ready(rail.final) || rail.final.range != expected.range ||
+            rail.final.voltage != expected.voltage || rail.final.mode != expected.mode ||
+            rail.final.enable != expected.enable) { return Result::Unqualified; }
+        ++rail.stableSamples;
+    }
+    rail.ready = true;
+    return Result::Ok;
+}
+
 const char *resultName(Result result)
 {
     switch (result) {

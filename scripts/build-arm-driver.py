@@ -58,6 +58,7 @@ COMPONENTS = {
                     "drivers/NativeAdreno418/RpmVotes.cpp",
                     "drivers/NativeAdreno418/PowerController.cpp",
                     "drivers/NativeAdreno418/SpmiCore.cpp",
+                    "drivers/NativeAdreno418/PinnedGraphics.cpp",
                     "drivers/NativeAdreno418/A418Init.cpp",
                     "drivers/NativeAdreno418/SmmuRoutes.cpp",
                     "drivers/NativeAdreno418/GpuBatch.cpp",

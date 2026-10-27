@@ -48,7 +48,7 @@ def disk_info(device):
     return plistlib.loads(subprocess.check_output(["diskutil", "info", "-plist", str(device)]))
 
 
-def phone_identity(volume_uuid, partition_uuid):
+def measured_phone(volume_uuid, partition_uuid):
     volume = disk_info(PHONE)
     whole = disk_info("/dev/" + volume["ParentWholeDisk"])
     if volume.get("VolumeUUID") != volume_uuid or volume.get("DiskUUID") != partition_uuid or \
@@ -57,6 +57,11 @@ def phone_identity(volume_uuid, partition_uuid):
         whole.get("TotalSize") != 31268536320 or whole.get("MediaName") != "Phone MMC Stor" or \
         whole.get("BusProtocol") != "USB" or whole.get("Internal"):
         raise ValueError("connected device is not the explicitly identified Lumia EFIESP")
+    return volume, whole
+
+
+def phone_identity(volume_uuid, partition_uuid):
+    volume, whole = measured_phone(volume_uuid, partition_uuid)
     for name, expected in CRITICAL.items():
         if digest((PHONE / name).read_bytes()) != expected:
             raise ValueError(f"existing boot state changed: {name}; no installation")
