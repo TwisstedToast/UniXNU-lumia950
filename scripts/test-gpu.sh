@@ -53,4 +53,5 @@ done
   -I "$ROOT/drivers/NativeAdreno418" "$ROOT/drivers/NativeAdreno418/GpuIo.cpp" \
   "$ROOT/drivers/NativeAdreno418/SecureSmmu.cpp" \
   "$ROOT/drivers/NativeAdreno418/Test/check-secure-smmu.cpp" -o "$OUT/check-secure-smmu"
-"$OUT/check-secure-smmu" "$ROOT/drivers/NativeAdreno418/Test/secure-smmu-profile.hex"
+"$OUT/check-secure-smmu" "$ROOT/drivers/NativeAdreno418/Test/secure-smmu-profile.hex" \
+  "$ROOT/drivers/NativeAdreno418/Test/secure-smmu-handset-profile.hex"

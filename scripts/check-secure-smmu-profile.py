@@ -45,25 +45,55 @@ def device_bytes(blob):
     return matches[0]
 
 
+def without_dependency(block):
+    changed, count = re.subn(r'\s*Name\s*\(_DEP,\s*Package\s*\(0x01\)\s*(?://[^\n]*\n)?'
+        r'\s*\{\s*\\_SB\.PEP0\s*\}\)', '', block)
+    if count != 1:
+        raise ValueError('expected exactly one pinned MMU3 PEP0 dependency declaration')
+    return changed
+
+
 def main():
     parser = argparse.ArgumentParser(description='Bind native secure SMMU constants and AML fixture to the pinned Lumia source')
     parser.add_argument('--firmware-root', required=True, type=Path)
-    parser.add_argument('--iasl', help='Optionally recompile the isolated unmodified device as an independent byte check')
+    parser.add_argument('--iasl', help='Optionally independently recompile both exact allowlisted device variants')
     args = parser.parse_args()
     evidence = json.loads((ROOT / 'docs/hardware/2026-10-27-secure-gpu-smmu-profile.json').read_text())
     source = (args.firmware_root / evidence['acpi_source']).read_bytes()
     if hashlib.sha256(source).hexdigest() != evidence['acpi_source_sha256']:
         raise ValueError('unqualified original ACPI source')
     block = device_source(source.decode())
-    fixture = bytes.fromhex((ROOT / 'drivers/NativeAdreno418/Test/secure-smmu-profile.hex').read_text())
-    if len(fixture) != evidence['profile_recognition']['fixture_bytes'] or \
-        hashlib.sha256(fixture).hexdigest() != evidence['profile_recognition']['fixture_sha256']:
-        raise ValueError('independent compiled fixture changed')
+    recognition = evidence['profile_recognition']
+    handset = recognition['handset_without_dependency']
+    variants = [('kMmu3', 'secure-smmu-profile.hex', recognition, block),
+        ('kMmu3Handset', 'secure-smmu-handset-profile.hex', handset, without_dependency(block))]
     code = (ROOT / 'drivers/NativeAdreno418/SecureSmmu.cpp').read_text()
-    encoded = re.search(r'constexpr u8 kMmu3\[\] = \{(.*?)\};', code, re.S)
-    expected = bytes(int(value, 16) for value in re.findall(r'0x([0-9a-f]+)', encoded[1]))
-    if expected != device_bytes(fixture) or len(expected) != evidence['profile_recognition']['bytes']:
-        raise ValueError('native profile differs from the independently compiled device')
+    devices = {}
+    for name, filename, metadata, declaration in variants:
+        fixture = bytes.fromhex((ROOT / 'drivers/NativeAdreno418/Test' / filename).read_text())
+        if len(fixture) != metadata['fixture_bytes'] or \
+            hashlib.sha256(fixture).hexdigest() != metadata['fixture_sha256']:
+            raise ValueError('independent compiled fixture changed: ' + name)
+        encoded = re.search(rf'constexpr u8 {name}\[\] = \{{(.*?)\}};', code, re.S)
+        if not encoded:
+            raise ValueError('native profile is missing: ' + name)
+        expected = bytes(int(value, 16) for value in re.findall(r'0x([0-9a-f]+)', encoded[1]))
+        if expected != device_bytes(fixture) or len(expected) != metadata['bytes']:
+            raise ValueError('native profile differs from the independently compiled device: ' + name)
+        devices[name] = expected
+    observed = json.loads((ROOT / handset['evidence']).read_text())
+    captured = device_bytes(bytes(36) + bytes.fromhex(observed['candidate_hex']))
+    if captured != devices['kMmu3Handset'] or len(captured) != observed['device_bytes'] or \
+        hashlib.sha256(captured).hexdigest() != observed['device_sha256'] or \
+        observed['device_sha256'] != handset['device_sha256']:
+        raise ValueError('handset profile differs from the complete captured MMU3 Device')
+    dependency = bytes.fromhex('085f44455012060150455030')
+    if devices['kMmu3'].count(dependency) != 1:
+        raise ValueError('pinned dependency encoding is not unique')
+    omitted = bytearray(devices['kMmu3'].replace(dependency, b''))
+    omitted[2:4] = bytes.fromhex('4f0c')
+    if omitted != captured:
+        raise ValueError('handset profile changes more than the observed dependency and package length')
     header = (ROOT / 'drivers/NativeAdreno418/SecureSmmu.h').read_text()
     for name, value in {'kGraphicsDevice': 18, 'kCallAvailable': 0x02000601,
         'kRestoreConfiguration': 0x02000c02, 'kContextOffset': 0x8000, 'kContextCount': 2}.items():
@@ -73,15 +103,17 @@ def main():
     if args.iasl:
         with tempfile.TemporaryDirectory(prefix='lumia-mmu3-profile-') as temporary:
             directory = Path(temporary)
-            isolated = directory / 'mmu3.asl'
-            isolated.write_text('DefinitionBlock ("", "DSDT", 2, "QCOMM ", "MSM8992 ", 7)\n{\n'
-                'External (_SB.PEP0, DeviceObj)\nScope (\\_SB)\n{\n' + block + '\n}\n}\n')
-            subprocess.run([args.iasl, '-tc', str(isolated)], cwd=directory, check=True,
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-            if device_bytes(isolated.with_suffix('.aml').read_bytes()) != expected:
-                raise ValueError('independent IASL recompilation differs from the native MMU3 profile')
+            for name, filename, metadata, declaration in variants:
+                isolated = directory / (name + '.asl')
+                isolated.write_text('DefinitionBlock ("", "DSDT", 2, "QCOMM ", "MSM8992 ", 7)\n{\n'
+                    'External (_SB.PEP0, DeviceObj)\nScope (\\_SB)\n{\n' + declaration + '\n}\n}\n')
+                subprocess.run([args.iasl, '-tc', str(isolated)], cwd=directory, check=True,
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                if device_bytes(isolated.with_suffix('.aml').read_bytes()) != devices[name]:
+                    raise ValueError('independent IASL recompilation differs from native profile: ' + name)
     print(json.dumps({'source_hash_verified': True, 'compiled_fixture_verified': True,
-        'independent_iasl_recompilation_passed': bool(args.iasl), 'device_bytes': len(expected),
+        'independent_iasl_recompilation_passed': bool(args.iasl), 'device_bytes': len(devices['kMmu3']),
+        'handset_device_bytes': len(captured), 'captured_handset_variant_verified': True,
         'secure_monitor_device': 18, 'handset_secure_setup_or_dma_observed': False}, indent=2))
 
 

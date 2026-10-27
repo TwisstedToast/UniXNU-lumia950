@@ -234,7 +234,7 @@ void checksum(std::vector<u8> &table)
     table[9] = static_cast<u8>(0u - sum);
 }
 
-void testProfile(const char *path)
+std::vector<u8> loadFixture(const char *path)
 {
     std::ifstream input(path);
     std::vector<u8> table;
@@ -245,9 +245,15 @@ void testProfile(const char *path)
             static_cast<unsigned>(value - '0') : static_cast<unsigned>(value - 'a' + 10); };
         table.push_back(static_cast<u8>((digit(first) << 4) | digit(second)));
     }
-    expect(table.size() == 280 && isLumiaSmmuProfile(table.data(), static_cast<u32>(table.size())),
-        "independently IASL-compiled pinned MMU3 fixture matches the complete expected device declaration");
-    if (table.size() != 280) { return; }
+    return table;
+}
+
+void testProfile(const std::vector<u8> &table, u32 expectedBytes, AcpiProfile profile)
+{
+    expect(table.size() == expectedBytes && isLumiaSmmuProfile(table.data(), static_cast<u32>(table.size())) &&
+        identifyLumiaSmmuProfile(table.data(), static_cast<u32>(table.size())) == profile,
+        "independently IASL-compiled MMU3 fixture identifies the complete exact known device variant");
+    if (table.size() != expectedBytes) { return; }
     const u32 start = 59;
     expect(table[start] == 0x5b && table[start + 1] == 0x82, "fixture locates the actual MMU3 Device opcode");
     for (u32 index = start; index < table.size(); ++index) {
@@ -265,18 +271,42 @@ void testProfile(const char *path)
     checksum(duplicate);
     expect(!isLumiaSmmuProfile(duplicate.data(), static_cast<u32>(duplicate.size())),
         "duplicate MMU3 signatures cannot qualify a secure restore");
-    table[9] ^= 1;
-    expect(!isLumiaSmmuProfile(table.data(), static_cast<u32>(table.size())), "bad ACPI checksum prevents secure setup");
+    std::vector<u8> badChecksum = table;
+    badChecksum[9] ^= 1;
+    expect(!isLumiaSmmuProfile(badChecksum.data(), static_cast<u32>(badChecksum.size())),
+        "bad ACPI checksum prevents secure setup");
+    for (u32 index = 0; index < 4; ++index) {
+        std::vector<u8> badSignature = table;
+        badSignature[index] ^= 1;
+        checksum(badSignature);
+        expect(!isLumiaSmmuProfile(badSignature.data(), static_cast<u32>(badSignature.size())),
+            "non-DSDT ACPI signatures remain rejected for both known variants");
+    }
 }
 
 }
 
 int main(int argc, char **argv)
 {
-    if (argc != 2) { return 2; }
+    if (argc != 3) { return 2; }
     testConfiguration();
     testContexts();
-    testProfile(argv[1]);
+    const std::vector<u8> pinned = loadFixture(argv[1]);
+    const std::vector<u8> handset = loadFixture(argv[2]);
+    testProfile(pinned, 280, AcpiProfile::PinnedWithDependency);
+    testProfile(handset, 268, AcpiProfile::HandsetWithoutDependency);
+    if (pinned.size() == 280 && handset.size() == 268) {
+        for (bool pinnedFirst : {false, true}) {
+            std::vector<u8> mixed = pinnedFirst ? pinned : handset;
+            const std::vector<u8> &other = pinnedFirst ? handset : pinned;
+            mixed.insert(mixed.end(), other.begin() + 59, other.end());
+            checksum(mixed);
+            expect(!isLumiaSmmuProfile(mixed.data(), static_cast<u32>(mixed.size())),
+                "a mixed duplicate of both exact MMU3 variants is rejected regardless of order");
+        }
+    }
+    expect(!isLumiaSmmuProfile(nullptr, 0) && !isLumiaSmmuProfile(nullptr, 280),
+        "absent ACPI data never qualifies a secure restore");
     std::printf("secure GPU SMMU model: %u checks, %u failures (not handset execution)\n", checks, failures);
     return failures ? 1 : 0;
 }

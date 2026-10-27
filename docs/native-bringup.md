@@ -190,12 +190,23 @@ electrical/interconnect cause or a guaranteed fix. Addresses, binary hashes,
 ACPI metadata and access restrictions are recorded in
 `docs/hardware/2026-10-27-secure-gpu-smmu-profile.json`.
 
-V5 recognizes one exact 221-byte MMU3 declaration in a checksummed DSDT before
-hardware exit. This intentionally narrow byte recognizer is not a general AML
-interpreter or a security boundary against modified firmware. Different AML
-encodings stop before secure calls or hardware changes. The small independent
-IASL fixture was compiled from the isolated unmodified MMU3 declaration; full
-DSDT recompilation failed on unrelated existing source errors and is not claimed.
+The saved v5 handset reports stopped at `SMMU_ACPI_PROFILE`, before hardware exit,
+native GPU startup or secure calls. Their complete MMU3 Device is 209 bytes, not
+the pinned source's 221: only the 12-byte `_DEP` declaration is absent, with its
+Device package length adjusted. All other device bytes match, including resource
+ranges, GUID, context layout and `XPUE=1`. The reason for the omission is not
+established. The captured bytes and report hashes are preserved in
+`docs/hardware/2026-10-27-native-gpu-v5-smmu-profile.json`.
+
+V6 recognizes those two exact declarations in a checksummed DSDT, requiring one
+unique match across both variants. `SMMU_ACPI_PROFILE=1` identifies the pinned
+dependency-present encoding; `2` identifies the observed handset encoding. This
+intentionally narrow byte recognizer is not a general AML interpreter or a security
+boundary against modified firmware. Other encodings still stop before secure calls
+or hardware changes. Both fixtures are independently IASL-compiled: the pinned
+unmodified declaration and the same declaration without `_DEP`, with the latter
+compared against the complete captured handset Device. Full DSDT recompilation
+failed on unrelated existing source errors and is not claimed.
 
 After the existing GPU startup, explicit confirmation also selects an experimental
 native secure-monitor restore. It first checks availability, requires zero monitor

@@ -142,8 +142,10 @@ bool LumiaSmmuProfile()
     if (!address || (address & 3)) { return false; }
     const UINT8 *dsdt = reinterpret_cast<const UINT8 *>(address);
     const UINT32 bytes = Read32(dsdt + 4);
-    const bool qualified = secure::isLumiaSmmuProfile(dsdt, bytes);
+    const secure::AcpiProfile profile = secure::identifyLumiaSmmuProfile(dsdt, bytes);
+    const bool qualified = profile != secure::AcpiProfile::Unsupported;
     PrintHex("SMMU_DSDT_BYTES", bytes);
+    PrintHex("SMMU_ACPI_PROFILE", static_cast<UINT32>(profile));
     if (!qualified && bytes >= 36 && bytes <= 1024 * 1024 && Checksum(dsdt, bytes)) {
         for (UINT32 offset = 36; offset + 4 <= bytes; ++offset) {
             if (Read32(dsdt + offset) != 0x33554d4d) { continue; }
@@ -420,7 +422,7 @@ static EFI_STATUS Run(EFI_HANDLE image, EFI_SYSTEM_TABLE *systemTable)
     preflightStage = "PLATFORM";
     firmware->ConOut->ClearScreen(firmware->ConOut);
 #ifdef LUMIA_GPU_POWER_TEST
-    Print("LUMIA 950 | NATIVE GPU POWER v5\r\n");
+    Print("LUMIA 950 | NATIVE GPU POWER v6\r\n");
     Print("Post-EBS PMI8994 supply, dedicated clock, GPU power and hardware setup.\r\n");
     Print("No Windows. No shared-bus RPM changes. No DMA, rendered frame or iOS claim.\r\n");
 #else

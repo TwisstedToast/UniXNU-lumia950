@@ -12,6 +12,8 @@ constexpr u32 kGraphicsDevice = 18;
 constexpr u32 kContextOffset = 0x8000;
 constexpr u32 kContextCount = 2;
 
+enum class AcpiProfile : u32 { Unsupported, PinnedWithDependency, HandsetWithoutDependency };
+
 struct MonitorRegisters { u64 values[8]; };
 struct MonitorIo {
     void *context;
@@ -61,6 +63,7 @@ struct Contexts {
 };
 
 bool isLumiaSmmuProfile(const u8 *table, u32 bytes);
+AcpiProfile identifyLumiaSmmuProfile(const u8 *table, u32 bytes);
 Result restoreGraphicsConfiguration(Configuration &configuration, const MonitorIo &io,
     const Contract &contract, u32 callBudget);
 Result inspectGraphicsContexts(Contexts &contexts, const RegisterIo &io,

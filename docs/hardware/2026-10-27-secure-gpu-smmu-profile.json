@@ -16,13 +16,22 @@
   "xpue": 1,
   "profile_recognition": {
     "bytes": 221,
-    "method": "Exact IASL-compiled MMU3 Device byte sequence in checksummed DSDT; unique occurrence required",
+    "method": "Exact allowlisted MMU3 Device byte sequences in checksummed DSDT; exactly one occurrence across both variants required",
     "not_a_general_aml_interpreter_or_a_security_boundary_against_modified_firmware": true,
     "fixture_bytes": 280,
     "fixture_sha256": "c001a0f3bb73199c3700d2a351f25f559707356cf168586b484d3aa8baaf3399",
     "compiler": "ACPICA IASL 20260408",
     "compiler_arguments": "-tc; isolated unmodified MMU3 source with an External declaration for _SB.PEP0",
-    "full_disassembled_dsdt_recompilation": "Failed on six pre-existing unrelated source errors; no complete DSDT AML is claimed"
+    "full_disassembled_dsdt_recompilation": "Failed on six pre-existing unrelated source errors; no complete DSDT AML is claimed",
+    "handset_without_dependency": {
+      "bytes": 209,
+      "device_sha256": "b96becfdbeae5c80277a664602eef597c377868e9b1989f6ce41cc447959232a",
+      "fixture_bytes": 268,
+      "fixture_sha256": "5ee136731442a35696ad851683269efbb726f553faeeb63f840377176f348ae7",
+      "evidence": "docs/hardware/2026-10-27-native-gpu-v5-smmu-profile.json",
+      "compiler_arguments": "-tc; isolated pinned MMU3 source with only its _DEP declaration removed, independently compared with the complete captured handset Device bytes",
+      "acpi_profile_report_value": 2
+    }
   },
   "handset_driver": {
     "binary": "qcsmmu8994.sys",
