@@ -97,7 +97,7 @@ void NativeGpuProgress(const ProbeFramebuffer &framebuffer, const char *stage, u
     ++nativeGpuCheckpoint;
     const u32 color = ProbeFramebufferColor(framebuffer.pixel_format, 60, 170, 255);
     ProbeFillRectangle(&framebuffer, 0, 0, framebuffer.width, 440, 0);
-    Line(framebuffer, 0, "GPU BRINGUP V7 - CPU STATUS ONLY", color);
+    Line(framebuffer, 0, "GPU BRINGUP V8 - CPU STATUS ONLY", color);
     Line(framebuffer, 1, ProbeGpuModeName(nativeGpuMode), color);
     Line(framebuffer, 2, stage, color);
     Number(framebuffer, 3, "TRACE STEP", nativeGpuCheckpoint, color);
@@ -105,7 +105,12 @@ void NativeGpuProgress(const ProbeFramebuffer &framebuffer, const char *stage, u
     if (pauseMicroseconds) { Delay(nullptr, pauseMicroseconds); }
 }
 
-struct NativeScmTrace { const ProbeFramebuffer *framebuffer; u32 entries; u64 activeFunction; };
+struct NativeScmTrace {
+    const ProbeFramebuffer *framebuffer;
+    u32 entries;
+    secure::Request activeRequest;
+    bool resumePending;
+};
 
 bool NativeScmInvoke(void *opaque, secure::MonitorRegisters *values)
 {
@@ -113,33 +118,38 @@ bool NativeScmInvoke(void *opaque, secure::MonitorRegisters *values)
     auto &trace = *static_cast<NativeScmTrace *>(opaque);
     const u64 function = values->values[0];
     const bool resuming = function == 1;
-    if (!resuming) { trace.activeFunction = function; }
-    const bool query = trace.activeFunction == secure::kCallAvailable;
+    if (resuming) {
+        if (!trace.resumePending) { return false; }
+    } else {
+        if (trace.resumePending) { return false; }
+        trace.activeRequest = secure::identifyRequest(*values);
+        if (trace.activeRequest == secure::Request::Invalid) { return false; }
+    }
     const auto &framebuffer = *trace.framebuffer;
     const u32 color = ProbeFramebufferColor(framebuffer.pixel_format, 60, 170, 255);
     ++trace.entries;
     if (!resuming) {
-        NativeGpuProgress(framebuffer, query ? "ENTERING SCM AVAILABILITY QUERY" :
-            "ENTERING SCM DEVICE 18 RESTORE", 0);
+        NativeGpuProgress(framebuffer, secure::requestStage(trace.activeRequest, false), 0);
         Number(framebuffer, 5, "SCM FUNCTION", function, color);
         Number(framebuffer, 6, "SCM ARG INFO", values->values[1], color);
         Number(framebuffer, 7, "SCM ARG ZERO", values->values[2], color);
         Number(framebuffer, 8, "SCM ARG ONE", values->values[3], color);
         Number(framebuffer, 9, "SCM ENTRY", trace.entries, color);
         Flush(framebuffer, 0, 440);
-        Delay(nullptr, 750000);
+        Delay(nullptr, 2000000);
     }
     const bool returned = NativeGuardedScmCall(values);
-    if (ProbeGpuScmResumePending(returned, values->values[0])) { return true; }
+    trace.resumePending = ProbeGpuScmResumePending(returned, values->values[0]);
+    if (trace.resumePending) { return true; }
     NativeGpuProgress(framebuffer, !returned ? "SCM TRAP RECOVERED" :
-        query ? "SCM AVAILABILITY QUERY RETURNED" : "SCM DEVICE 18 RESTORE RETURNED", 0);
+        secure::requestStage(trace.activeRequest, true), 0);
     Number(framebuffer, 5, "SCM MONITOR", values->values[0], color);
     Number(framebuffer, 6, "SCM SERVICE", values->values[1], color);
     Number(framebuffer, 7, "SCM COOKIE", values->values[6], color);
     Number(framebuffer, 8, "GUARD RETURNED", returned, color);
     Number(framebuffer, 9, "SCM ENTRY", trace.entries, color);
     Flush(framebuffer, 0, 440);
-    Delay(nullptr, 750000);
+    Delay(nullptr, 2000000);
     return returned;
 }
 
@@ -212,8 +222,9 @@ bool NativeScmInvoke(void *opaque, secure::MonitorRegisters *values)
     Number(framebuffer, 46, "RAIL READS", handoff.rail.samples, color);
     Number(framebuffer, 47, "RAIL MIN UV", handoff.rail.minimumMicrovolts, color);
     Number(framebuffer, 48, "RAIL MAX UV", handoff.rail.maximumMicrovolts, color);
-    Line(framebuffer, 49, "NO SHADER FRAME OR IOS CLAIMED", color);
-    Line(framebuffer, 50, "RESOURCES PINNED - FORCE REBOOT", color);
+    Number(framebuffer, 49, "SCM CONVENTION", static_cast<u32>(result.configuration.convention), color);
+    Number(framebuffer, 50, "SCM FEATURE 10", result.configuration.featureVersion, color);
+    Line(framebuffer, 51, "PINNED - NO SHADER/IOS - FORCE REBOOT", color);
     Flush(framebuffer, 0, framebuffer.height);
     for (;;) { asm volatile("wfi"); }
 }
@@ -277,7 +288,7 @@ bool NativeScmInvoke(void *opaque, secure::MonitorRegisters *values)
     }
     if (!ProbeGpuAllowsSecure(nativeGpuMode)) { NativeGpuResultScreen(framebuffer, result); }
     NativeGpuProgress(framebuffer, "RESTORING OEM SECURE SMMU POLICY");
-    NativeScmTrace trace = {&framebuffer, 0, 0};
+    NativeScmTrace trace = {&framebuffer, 0, secure::Request::Invalid, false};
     const secure::MonitorIo monitor = {&trace, NativeScmInvoke};
     result.secureResult = secure::restoreGraphicsConfiguration(result.configuration, monitor,
         {true, true, true, nativeSmmuProfile, ProbeGpuAllowsSecure(nativeGpuMode)}, 64);

@@ -70,7 +70,7 @@ Its steps are:
   UEFI RAM conflict, reserve exactly those 128 KiB as MMIO and request UC page
   attributes through DXE before checking every Device translation. Existing RAM,
   reserved ownership, ambiguous descriptors and failed mappings are not overridden.
-- V7 uses **Volume Up** for GPU-only startup, without secure calls or SMMU reads;
+- V7 and later use **Volume Up** for GPU-only startup, without secure calls or SMMU reads;
   **Volume Down** explicitly selects startup plus secure configuration/context
   inspection. Any other key cancels. Save the preflight with the selected mode
   before firmware exit. No native SPMI transaction or GPU power/clock write occurs
@@ -186,10 +186,12 @@ Matching ACPI marks `MMU3.XPUE=1`. Static analysis of the handset's backed-up
 `qcsmmu8994.sys` finds a separate secure setup path, which avoids those global
 ID reads. Its GUID mapper selects device **18**, not another platform's GPU
 device ID, and submits restore function `0x02000c02` with arguments `(18, 0)`.
-The matching `qcscm8994.sys` uses the SMC32 SiP convention. This makes protected
-global access a supported explanation of the fault, not a proven exclusive
-electrical/interconnect cause or a guaranteed fix. Addresses, binary hashes,
-ACPI metadata and access restrictions are recorded in
+`qcscm8994.sys` sends the descriptor through a TrEE target IOCTL; its bundled
+SMC32 veneer does not establish the active calling convention. The actual
+`QcTrEE8994.sys` performs SMC32 discovery and selects SMC32 or SMC64 from feature
+10, as audited for v8. Protected global access remains a supported explanation
+of the earlier fault, not a proven exclusive electrical/interconnect cause or a
+guaranteed fix. Addresses, binary hashes, ACPI metadata and access restrictions are recorded in
 `docs/hardware/2026-10-27-secure-gpu-smmu-profile.json`.
 
 The saved v5 handset reports stopped at `SMMU_ACPI_PROFILE`, before hardware exit,
@@ -211,9 +213,11 @@ compared against the complete captured handset Device. Full DSDT recompilation
 failed on unrelated existing source errors and is not claimed.
 
 After the existing GPU startup, explicit confirmation also selects an experimental
-native secure-monitor restore. It first checks availability, requires zero monitor
-and service results, permits only bounded interrupted-call resumes with the A6
-cookie, and never guesses another ABI or retries a busy/error response. A monitor
+native secure-monitor restore. V8 first performs the OEM discovery/feature sequence,
+then checks restore availability using the advertised convention. It requires zero
+monitor status, availability equal to one and zero restore service status, permits
+only bounded interrupted-call resumes with the A6 cookie, and never guesses another
+ABI or retries a busy/error response. A monitor
 call that never returns cannot be cancelled by that budget. The native bridge
 refuses every global SMMU address and every direct SMMU write. Only context banks
 0 and 1 are inspected; native MMIO leaves bank 2, global routes and security
@@ -223,6 +227,45 @@ Valid-field masks distinguish real zero values from missing reads. Existing enab
 contexts or faults remain unchanged and stop qualification. Partial GPU success is
 shown separately from SMMU failure. This establishes no global-route readback,
 page-table mapping, command execution, DMA, rendered frame or measured FPS.
+
+### V8 OEM monitor-convention negotiation
+
+The user reported a hard reboot after seeing `C` in v7, but did not capture the
+complete heading. If that was hexadecimal `TRACE STEP 0000000C`, it identifies
+`ENTERING SCM AVAILABILITY QUERY`, not a returned monitor error. The retrieved
+`gpu-report-15.txt` confirms explicit secure-context mode on the verified v7
+image; it contains no post-exit results. The separate GPU-only photo confirms
+native GPU startup without secure calls. Neither observation proves the exact
+reset instruction or a secure-firmware root cause. These distinctions are recorded
+in `docs/hardware/2026-10-27-native-gpu-v7-reset.json`.
+
+The audit then followed `qcscm8994.sys` through its actual TrEE target to the
+handset's `QcTrEE8994.sys`, rather than inferring a fixed ABI from an unused
+bundled veneer. The TrEE driver first issues SMC32 `0x02000601(0x02000602)`, then
+SMC32 `0x02000603(10)`. A returned feature version below `0x01000000` selects
+SMC32; versions at or above that threshold select SMC64 by setting function bit
+30. The descriptor literals remain unchanged. V8 implements that exact discovery
+and threshold, then checks restore availability and restores device 18 through
+the advertised convention. Discovery/feature errors stop; unlike the OEM driver,
+the native code does not silently fall back to SMC32 after a feature-query error.
+No fast-call variant or error-driven width retry is attempted.
+
+All four phases share a 64-entry budget, including interrupted resumes. The
+native callback rejects unrecognized fresh requests and unsolicited resume IDs.
+Separate entry/final-return headings identify the actual convention and query,
+with two-second holds only outside interrupted sequences. Final `SCM CONVENTION`
+values are 0=unnegotiated, 1=SMC32, 2=SMC64; `SCM FEATURE 10` is the returned
+version, not a measured GPU capability. GPU-only mode still skips every monitor
+call and SMMU read. Power, voltage observation, dedicated clock requests and GPU
+initialization are unchanged.
+
+`scripts/check-oem-scm-profile.py` binds native constants to the audit and can
+verify 25 instruction/literal words in the exact private handset driver, plus
+hashes of the pinned public EL2 patch source. Driver binaries are not committed
+or downloaded by CI. Static EL2 source is not live hypervisor qualification.
+Host models and EFI/QEMU checks do not establish a handset monitor return. The
+first discovery still crosses the previously unproven secure conduit: **v8 is
+not a confirmed reset fix and must not be described as GPU rendering or iOS**.
 
 ### V7 reset-stage diagnostics
 

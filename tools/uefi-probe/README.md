@@ -210,6 +210,37 @@ reported v6 reset. The last exact heading is needed before identifying the cause
 brief blue text alone does not identify the failing hardware operation. No clock,
 voltage policy or secure-monitor ABI is changed by this diagnostic instrumentation.
 
+## OEM monitor convention (v8)
+
+GPU-only and secure-context selection remain unchanged. The secure path now
+follows the actual handset TrEE driver's SMC32 discovery query for `0x02000602`
+and feature-10 version query, instead of assuming the SCM descriptor literal is
+always the final SMC32 wire ID. Feature versions at or above `0x01000000` select
+SMC64 for the subsequent restore-availability query and device-18 restore.
+Discovery errors stop; there are no speculative width or fast-call retries.
+The four phases share one 64-entry limit, including interrupted resumes.
+
+Fresh requests must match one of those exact register tuples; an unsolicited
+resume is refused. Entry and final-return markers name the actual query and
+convention and hold for two seconds; interrupted calls still resume immediately
+without drawing. `SCM CONVENTION` is 0=unnegotiated, 1=SMC32 or 2=SMC64. Neither
+these source changes nor static driver analysis confirms a working secure entry
+on the phone, and v8 is not a confirmed fix for the reported v7 reboot after `C`.
+That report lacks a full heading: the candidate `TRACE STEP 0000000C` maps to
+the first availability-query entry, but does not prove the reset instruction.
+
+The audit, exact driver hash and verified instruction/literal addresses are in
+`docs/hardware/2026-10-27-oem-scm-transport.json`. To repeat the static check using
+the privately captured driver and pinned public firmware source:
+
+```sh
+python3 scripts/check-oem-scm-profile.py --tree-driver /path/to/QcTrEE8994.sys \
+    --firmware-root /path/to/Lumia950XLPkg
+```
+
+No Windows application, firmware GPU service, shader execution, DMA or FPS claim
+is added. The GPU-only path remains the established native hardware baseline.
+
 ## On the phone
 
 Use the already-installed Lumia950XLPkg ARM64 UEFI. The Windows Phone Developer Menu is

@@ -125,26 +125,82 @@ bool isLumiaSmmuProfile(const u8 *table, u32 bytes)
     return identifyLumiaSmmuProfile(table, bytes) != AcpiProfile::Unsupported;
 }
 
+Request identifyRequest(const MonitorRegisters &registers)
+{
+    for (u32 index = 3; index < 8; ++index) {
+        if (registers.values[index]) { return Request::Invalid; }
+    }
+    const u64 function = registers.values[0];
+    const u64 arguments = registers.values[1];
+    const u64 first = registers.values[2];
+    if (arguments == 1) {
+        if (function == kCallAvailable && first == kDetectionTarget) { return Request::Discovery32; }
+        if (function == kGetFeatureVersion && first == kInterfaceFeature) { return Request::Feature32; }
+        if (first == kRestoreConfiguration) {
+            if (function == kCallAvailable) { return Request::RestoreAvailability32; }
+            if (function == (kCallAvailable | kSmc64Mask)) { return Request::RestoreAvailability64; }
+        }
+    }
+    if (arguments == 2 && first == kGraphicsDevice) {
+        if (function == kRestoreConfiguration) { return Request::Restore32; }
+        if (function == (kRestoreConfiguration | kSmc64Mask)) { return Request::Restore64; }
+    }
+    return Request::Invalid;
+}
+
+const char *requestStage(Request request, bool returned)
+{
+    switch (request) {
+    case Request::Discovery32: return returned ? "SCM32 OEM DISCOVERY RETURNED" : "ENTERING SCM32 OEM DISCOVERY";
+    case Request::Feature32: return returned ? "SCM32 FEATURE 10 RETURNED" : "ENTERING SCM32 FEATURE 10";
+    case Request::RestoreAvailability32: return returned ? "SCM32 RESTORE CHECK RETURNED" : "ENTERING SCM32 RESTORE CHECK";
+    case Request::RestoreAvailability64: return returned ? "SCM64 RESTORE CHECK RETURNED" : "ENTERING SCM64 RESTORE CHECK";
+    case Request::Restore32: return returned ? "SCM32 DEVICE 18 RESTORE RETURNED" : "ENTERING SCM32 DEVICE 18 RESTORE";
+    case Request::Restore64: return returned ? "SCM64 DEVICE 18 RESTORE RETURNED" : "ENTERING SCM64 DEVICE 18 RESTORE";
+    case Request::Invalid: return "UNRECOGNIZED SCM REQUEST";
+    }
+    return "UNRECOGNIZED SCM REQUEST";
+}
+
 Result restoreGraphicsConfiguration(Configuration &configuration, const MonitorIo &io,
     const Contract &contract, u32 callBudget)
 {
     if (configuration.attempted) { return Result::NotReady; }
     if (!validContract(contract)) { return Result::Unqualified; }
-    if (!io.invoke || callBudget < 2 || callBudget > 64) { return Result::Invalid; }
+    if (!io.invoke || callBudget < 4 || callBudget > 64) { return Result::Invalid; }
     configuration.io = io;
     configuration.contract = contract;
     configuration.attempted = true;
     MonitorRegisters registers = {};
     registers.values[0] = kCallAvailable;
     registers.values[1] = 1;
-    registers.values[2] = kRestoreConfiguration;
+    registers.values[2] = kDetectionTarget;
     Result result = call(configuration, registers, callBudget);
+    if (result != Result::Ok) { return result; }
+    if (configuration.returned.values[1] != 1) { return Result::Unsupported; }
+    configuration.detectionAvailable = 1;
+    registers = {};
+    registers.values[0] = kGetFeatureVersion;
+    registers.values[1] = 1;
+    registers.values[2] = kInterfaceFeature;
+    result = call(configuration, registers, callBudget);
+    if (result != Result::Ok) { return result; }
+    if (configuration.returned.values[1] > 0xffffffffu) { return Result::Mismatch; }
+    configuration.featureVersion = static_cast<u32>(configuration.returned.values[1]);
+    configuration.convention = configuration.featureVersion >= kSmc64FeatureVersion ?
+        Convention::Smc64 : Convention::Smc32;
+    const u32 mask = configuration.convention == Convention::Smc64 ? kSmc64Mask : 0;
+    registers = {};
+    registers.values[0] = kCallAvailable | mask;
+    registers.values[1] = 1;
+    registers.values[2] = kRestoreConfiguration;
+    result = call(configuration, registers, callBudget);
     if (result != Result::Ok) { return result; }
     if (configuration.returned.values[1] != 1) { return Result::Unsupported; }
     configuration.availability = 1;
     if (configuration.calls >= callBudget) { return Result::ResumeLimit; }
     registers = {};
-    registers.values[0] = kRestoreConfiguration;
+    registers.values[0] = kRestoreConfiguration | mask;
     registers.values[1] = 2;
     registers.values[2] = kGraphicsDevice;
     configuration.restoreAttempted = true;
@@ -160,7 +216,9 @@ Result inspectGraphicsContexts(Contexts &contexts, const RegisterIo &io,
 {
     contexts = {};
     if (!configuration.attempted || !configuration.restoreAttempted || !configuration.restored ||
-        configuration.availability != 1 || configuration.calls < 2 ||
+        configuration.detectionAvailable != 1 || configuration.availability != 1 || configuration.calls < 4 ||
+        configuration.convention != (configuration.featureVersion >= kSmc64FeatureVersion ?
+            Convention::Smc64 : Convention::Smc32) ||
         configuration.returned.values[0] || configuration.returned.values[1] ||
         !validContract(configuration.contract)) { return Result::Unqualified; }
     if (!io.read) { return Result::Invalid; }

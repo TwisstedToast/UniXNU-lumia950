@@ -20,6 +20,7 @@ for test_name in check-adreno-core check-gpu-backend; do
 done
 "${PYTHON:-python3}" "$ROOT/scripts/test-gpu-tools.py"
 "${PYTHON:-python3}" "$ROOT/scripts/test-graphics-profile.py"
+"${PYTHON:-python3}" "$ROOT/scripts/test-oem-scm-profile.py"
 "$CXX" -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined \
   -I "$ROOT/drivers/NativeAdreno418" \
   "$ROOT/drivers/NativeAdreno418/RpmCore.cpp" "$ROOT/drivers/NativeAdreno418/SmdPipe.cpp" \

@@ -1,0 +1,89 @@
+{
+  "schema": "lumia950-oem-scm-transport-v1",
+  "evidence_type": "Static analysis of the installed handset TrEE driver, not observed monitor execution",
+  "tree_driver": {
+    "filename": "QcTrEE8994.sys",
+    "driver_store_package": "qctree8994.inf_arm64_bccde24cdd3d9448",
+    "driver_version": "03/18/2021,1.0.1067.0000",
+    "bytes": 81736,
+    "sha256": "3c020df35c0652aed788d3c91b421aaaed0f3a68661f15247056c94c42746fb3",
+    "captured_from_read_only_windows": true,
+    "binary_in_git": false,
+    "image_base_hex": "140000000",
+    "verified_words": {
+      "140001048": "28C10E62",
+      "140001050": "D4000003",
+      "1400010A0": "A8C10E62",
+      "1400010A8": "D4000003",
+      "14000AACC": "12017B60",
+      "14000AADC": "97FFD953",
+      "14000ADC4": "32020360",
+      "14000ADD4": "97FFD8AB",
+      "14000AEF8": "D2800149",
+      "14000AF20": "52800022",
+      "14000AF40": "97FFFE6C",
+      "14000AF4C": "D2A02009",
+      "14000AF50": "EB09011F",
+      "14000AF54": "54000143",
+      "14000AF70": "90000008",
+      "14000AF74": "912F6108",
+      "14000AF94": "90000008",
+      "14000AF98": "9123C108",
+      "14000AFB8": "02000603",
+      "14000B010": "52800022",
+      "14000B02C": "F90017E9",
+      "14000B030": "97FFFE30",
+      "14000B060": "02000602",
+      "14000B064": "00000000",
+      "14000B068": "02000601"
+    }
+  },
+  "manager_driver": {
+    "filename": "qcscm8994.sys",
+    "sha256": "ec316bdaeb8b326d5c5083eeae941cc1c5399b8204eec9825b9c9a32c5bbff03",
+    "request_function_hex": "14000A540",
+    "transport_function_hex": "14000A098",
+    "actual_path": "Descriptor arginfo lookup followed by a TrEE target IOCTL; its bundled SMC32 veneer alone does not establish the active convention"
+  },
+  "native_constants": {
+    "kCallAvailable": 33555969,
+    "kDetectionTarget": 33555970,
+    "kGetFeatureVersion": 33555971,
+    "kInterfaceFeature": 10,
+    "kSmc64FeatureVersion": 16777216,
+    "kSmc64Mask": 1073741824,
+    "kRestoreConfiguration": 33557506,
+    "kGraphicsDevice": 18
+  },
+  "discovery": {
+    "function_hex": "14000AFC0",
+    "initial_function_hex": "02000601",
+    "arg_info": 1,
+    "first_argument_hex": "02000602",
+    "feature_function_hex": "14000AED0",
+    "feature_wire_function_hex": "02000603",
+    "feature_argument": 10,
+    "feature_query_convention": "SMC32",
+    "smc64_threshold_hex": "01000000",
+    "below_threshold_handler_hex": "14000A8F0",
+    "at_or_above_threshold_handler_hex": "14000ABD8",
+    "smc32_encoding": "Function bit 30 cleared before 140001028; 32-bit argument loads",
+    "smc64_encoding": "Function bit 30 set before 140001080; 64-bit argument loads",
+    "fast_call_bit_added": false,
+    "native_error_policy_difference": "The native implementation stops on discovery/feature errors; it does not copy the OEM fallback-to-SMC32-on-feature-error behavior",
+    "native_additional_check": "Check device-18 restore availability using the negotiated convention before attempting restore"
+  },
+  "firmware": {
+    "commit": "0e7e24adb2ac80672ade1e56f9b538d99941328f",
+    "files": {
+      "PrePi/HvcPatch.h": "285483bd88fbf40eacfd348312ec01a1d8cc6d08dd23f6b8214f31974ae9132e",
+      "PrePi/Pi.c": "7f24cd08066897a8be80f92febb7f60c3c05dcfbd367e28bc465ca59d920c241"
+    },
+    "source_observation": "The pinned PrePi patches EL2 SMC traps and forwards non-PSCI SMC calls; this is source evidence, not live hypervisor readback or proof that monitor entry returns",
+    "live_hypervisor_qualified": false
+  },
+  "handset_negotiated_convention_observed": false,
+  "checkpoint_c_reset_cause_established": false,
+  "gpu_frame_observed": false,
+  "ios_userspace_boot_observed": false
+}

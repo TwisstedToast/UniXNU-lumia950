@@ -125,6 +125,11 @@ jobs:
           done
           python3 scripts/check-graphics-profile.py --firmware-root work/graphics-reference
           python3 scripts/check-secure-smmu-profile.py --firmware-root work/graphics-reference
+          mkdir -p work/graphics-reference/PrePi
+          for file in HvcPatch.h Pi.c; do
+            curl -fsSL "$source/PrePi/$file" -o "work/graphics-reference/PrePi/$file"
+          done
+          python3 scripts/check-oem-scm-profile.py --firmware-root work/graphics-reference
 
       - name: The 16.x patch line has no holes
         # feeds.toml moves the build to xnu-8796.141.3, and UniXNU carries that line's patch
@@ -171,6 +176,7 @@ jobs:
               scripts/stage-kernel.py scripts/check-probe-image.py \
               scripts/test-probe-qemu.py scripts/test-handoff-qemu.py scripts/adreno-firmware.py \
               scripts/test-gpu-tools.py scripts/prepare-armcpu.py scripts/test-armcpu-patch.py \
+              scripts/check-oem-scm-profile.py scripts/test-oem-scm-profile.py \
               scripts/test-gicv2-qemu.py scripts/probe_fat.py scripts/test-probe-fat.py
           bash -n scripts/build-payload.sh scripts/build-probe.sh scripts/test-probe.sh scripts/test-gpu.sh scripts/test-storage.sh \
               scripts/test-gicv2.sh scripts/build-gicv2-test.sh scripts/test-report.sh
