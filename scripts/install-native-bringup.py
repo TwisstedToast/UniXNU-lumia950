@@ -3,12 +3,14 @@ import argparse
 import datetime
 import hashlib
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
 import plistlib
 import subprocess
 import tempfile
+import tarfile
 import time
 import tomllib
 
@@ -130,19 +132,34 @@ def install(args):
     timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     backup = Path(tempfile.mkdtemp(prefix=f"native-bringup-{timestamp}-", dir=backup_root))
     baseline = {}
+    archived = io.BytesIO()
+    archive = tarfile.open(fileobj=archived, mode="w")
     for source in sorted(PHONE.rglob("*")):
         if source.is_symlink():
             raise ValueError(f"unexpected phone symlink: {source}")
         if source.is_file():
             name = source.relative_to(PHONE).as_posix()
             data = source.read_bytes()
-            write_verified(backup / "EFIESP" / name, data)
+            member = tarfile.TarInfo(name)
+            member.size = len(data)
+            member.mtime = int(source.stat().st_mtime)
+            archive.addfile(member, io.BytesIO(data))
             baseline[name] = {"bytes": len(data), "sha256": digest(data)}
+    archive.close()
+    archive_data = archived.getvalue()
+    write_verified(backup / "EFIESP.tar", archive_data)
+    write_verified(backup / "fallback-rescue.efi", (PHONE / "EFI/boot/BOOTAA64.EFI").read_bytes())
     write_verified(backup / "before.json", (json.dumps({"summary": summary, "files": baseline}, indent=2) + "\n").encode())
     time.sleep(2)
-    for name, expected in baseline.items():
-        if digest((backup / "EFIESP" / name).read_bytes()) != expected["sha256"]:
-            raise ValueError("SSD backup changed after writing; phone remains untouched")
+    if (backup / "EFIESP.tar").read_bytes() != archive_data or \
+        digest((backup / "fallback-rescue.efi").read_bytes()) != CRITICAL["EFI/boot/BOOTAA64.EFI"]:
+        raise ValueError("SSD backup changed after writing; phone remains untouched")
+    with tarfile.open(backup / "EFIESP.tar", "r:") as verified:
+        if set(verified.getnames()) != set(baseline):
+            raise ValueError("backup archive file set mismatch; phone remains untouched")
+        for name, expected in baseline.items():
+            if digest(verified.extractfile(name).read()) != expected["sha256"]:
+                raise ValueError(f"backup archive verification failed: {name}; phone remains untouched")
     phone_identity(args.volume_uuid, args.partition_uuid)
     for name, data in files.items():
         if name != "EFI/BOOT/BOOTAA64.EFI":

@@ -29,6 +29,11 @@ replacing the fallback last. Final readback checks both the staged files and all
 other original files. Unexpected disk identities, changed boot hashes, an
 existing native tree, invalid stage hashes and insufficient space are refused.
 It never formats, repartitions, modifies BCD or automatically reboots/unmounts.
+The backup is `EFIESP.tar`, with every contained file rehashed, plus an independent
+`fallback-rescue.efi`. A loose-file backup on this Mac changed three AppleDouble
+metadata sidecars after creation; verification caught this before any phone
+writes. Keeping the exact original sidecar bytes inside the archive prevents
+macOS from treating them as live metadata while retaining them for recovery.
 
 ## Native hardware activation
 

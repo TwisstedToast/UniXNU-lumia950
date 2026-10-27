@@ -6,6 +6,7 @@ import io
 import json
 from pathlib import Path
 import tempfile
+import tarfile
 import unittest
 from unittest.mock import patch
 
@@ -90,7 +91,9 @@ class NativeInstallTests(unittest.TestCase):
     def test_backup_then_menu_replacement_preserves_other_files(self):
         self.run_install()
         backup = next(self.args.backup_root.iterdir())
-        self.assertEqual(self.contents(backup / "EFIESP"), self.before)
+        with tarfile.open(backup / "EFIESP.tar", "r:") as archive:
+            self.assertEqual({name: archive.extractfile(name).read() for name in archive.getnames()}, self.before)
+        self.assertEqual((backup / "fallback-rescue.efi").read_bytes(), self.before["EFI/boot/BOOTAA64.EFI"])
         for name, data in self.before.items():
             if name.casefold() != "efi/boot/bootaa64.efi":
                 self.assertEqual((self.phone / name).read_bytes(), data)
