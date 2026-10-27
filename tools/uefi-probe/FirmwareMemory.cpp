@@ -32,10 +32,19 @@ bool Covered(const UINT8 *map, UINTN mapBytes, UINTN stride, const adreno::rpm::
 bool ProbeRpmMmioReserved(const VOID *map, UINTN mapBytes, UINTN stride,
                           const adreno::rpm::MemoryLayout &layout, bool gcdQualified)
 {
+    const adreno::rpm::MemoryRegion regions[] = {layout.control, layout.fifo, layout.doorbell};
+    return ProbeMmioRangesReserved(map, mapBytes, stride, regions, 3, gcdQualified);
+}
+
+bool ProbeMmioRangesReserved(const VOID *map, UINTN mapBytes, UINTN stride,
+    const adreno::rpm::MemoryRegion *regions, UINTN count, bool gcdQualified)
+{
     if (!map || !mapBytes || mapBytes > 16 * 1024 * 1024 ||
-        stride < sizeof(EFI_MEMORY_DESCRIPTOR) || stride > 4096 || mapBytes % stride) { return false; }
+        stride < sizeof(EFI_MEMORY_DESCRIPTOR) || stride > 4096 || mapBytes % stride ||
+        !regions || !count || count > 16) { return false; }
     const auto *bytes = static_cast<const UINT8 *>(map);
-    return Covered(bytes, mapBytes, stride, layout.control, gcdQualified) &&
-        Covered(bytes, mapBytes, stride, layout.fifo, gcdQualified) &&
-        Covered(bytes, mapBytes, stride, layout.doorbell, gcdQualified);
+    for (UINTN index = 0; index < count; ++index) {
+        if (!Covered(bytes, mapBytes, stride, regions[index], gcdQualified)) { return false; }
+    }
+    return true;
 }

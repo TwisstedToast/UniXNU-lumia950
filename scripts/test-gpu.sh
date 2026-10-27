@@ -43,3 +43,7 @@ done
   "$ROOT/drivers/NativeAdreno418/RpmCore.cpp" "$ROOT/drivers/NativeAdreno418/RpmVotes.cpp" \
   "$ROOT/drivers/NativeAdreno418/Test/check-rpm-votes.cpp" -o "$OUT/check-rpm-votes"
 "$OUT/check-rpm-votes"
+"$CXX" -std=c++17 -Wall -Wextra -Werror -Wconversion -Wsign-conversion -fsanitize=address,undefined \
+  -I "$ROOT/drivers/NativeAdreno418" "$ROOT/drivers/NativeAdreno418/SpmiCore.cpp" \
+  "$ROOT/drivers/NativeAdreno418/Test/check-spmi.cpp" -o "$OUT/check-spmi"
+"$OUT/check-spmi"

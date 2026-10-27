@@ -52,6 +52,8 @@ def run_probe(arguments: argparse.Namespace) -> str:
                     if not chunk:
                         break
                     transcript.extend(chunk)
+                    if b"NATIVE MMIO GUARD PASSED" in transcript or b"NATIVE MMIO GUARD FAILED" in transcript:
+                        break
                     completed = b"PROBE COMPLETE" in transcript or b"RPM HANDOFF REFUSED" in transcript
                     if completed and not sent_return:
                         process.stdin.write(b"\r")
@@ -120,7 +122,7 @@ def main() -> None:
     parser.add_argument("--gic-version", choices=("2", "3"), default="2")
     parser.add_argument("--timeout", type=float, default=60)
     parser.add_argument("--log", type=Path)
-    parser.add_argument("--application", choices=("probe", "gpu", "rpm"), default="probe")
+    parser.add_argument("--application", choices=("probe", "gpu", "rpm", "native-gpu", "guard"), default="probe")
     parser.add_argument("--writable-report-test", action="store_true",
                         help="GPU only: boot twice on a private temporary copy and verify saved files")
     arguments = parser.parse_args()
@@ -145,6 +147,10 @@ def main() -> None:
         "rpm": ["LUMIA 950 | NATIVE RPM HANDOFF v3",
                 "PLATFORM_UNSUPPORTED: no SMEM, translation or MMIO access.",
                 "RPM HANDOFF REFUSED - firmware retained.", "Returning to firmware."],
+        "native-gpu": ["LUMIA 950 | NATIVE GPU POWER v1",
+                       "PLATFORM_UNSUPPORTED: no SMEM, translation or MMIO access.",
+                       "RPM HANDOFF REFUSED - firmware retained.", "Returning to firmware."],
+        "guard": ["NATIVE MMIO GUARD PASSED"],
     }
     required = evidence[arguments.application]
     missing = [marker for marker in required if marker not in transcript]
@@ -164,12 +170,15 @@ def main() -> None:
             if "REPORT_STAGE=CREATE_FILE" not in transcript or "REPORT_EFI_STATUS=0x8000000000000008" not in transcript:
                 parser.exit(1, "error: read-only report volume was not explicitly refused\n")
             print("Read-only report volume correctly reports EFI_WRITE_PROTECTED at CREATE_FILE.")
-    elif arguments.application == "rpm":
+    elif arguments.application in ("rpm", "native-gpu"):
         forbidden = ("RPM_CHANNEL=", "DEVICE_TRANSLATIONS=", "PREFLIGHT_SAVE_STAGE=",
-                     "Attempting native RPM handoff", "RPM HANDOFF READY")
+                     "Attempting native RPM handoff", "RPM HANDOFF READY", "GPU POWER READY",
+                     "GPU_GCD_STATUS", "GPU_MMSS_SMMU_SPMI_MAPPINGS")
         if any(marker in transcript for marker in forbidden):
             parser.exit(1, "error: unsupported QEMU platform entered the native RPM path\n")
         print(f"QEMU GICv{arguments.gic_version}: RPM platform refusal and firmware return passed")
+    elif arguments.application == "guard":
+        print(f"QEMU GICv{arguments.gic_version}: actual EL1 load/store abort recovery and continued valid access passed")
     else:
         print(f"QEMU GICv{arguments.gic_version}: EFI entry, GOP, memory map, input and return passed")
     print("This is emulator evidence, not a Lumia hardware or XNU boot result.")

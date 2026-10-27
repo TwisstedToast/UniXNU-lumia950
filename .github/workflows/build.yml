@@ -157,6 +157,9 @@ jobs:
         # rather than as an error line on a phone screen.
         run: python3 scripts/check-payload.py
 
+      - name: Validate the source-only native bring-up contract
+        run: python3 scripts/test-native-bringup.py
+
       - name: The kernel stage composes with the menu stage
         # The marker the stager replaces lives in the menu configuration, and the tree it adds
         # to must carry the loader. If either drifts, this has to fail here rather than on a
@@ -300,6 +303,20 @@ jobs:
             python3 scripts/test-probe-qemu.py --application rpm --esp out/rpm-handoff/esp \
               --firmware "$firmware" --gic-version "$gic" --log "out/rpm-handoff/refusal-gic$gic.log"
           done
+      - name: Exercise actual EL1 MMIO abort recovery and refuse native GPU on unsupported hardware
+        run: |
+          firmware=/usr/share/AAVMF/AAVMF_CODE.fd
+          if [ ! -f "$firmware" ]; then firmware=/usr/share/qemu-efi-aarch64/QEMU_EFI.fd; fi
+          for application in NativeMmioTest LumiaGpuPower; do
+            mkdir -p "out/$application/esp/EFI/BOOT"
+            cp "out/gpu-preflight/esp/EFI/LumiaProbe/$application.efi" "out/$application/esp/EFI/BOOT/BOOTAA64.EFI"
+          done
+          for gic in 2 3; do
+            python3 scripts/test-probe-qemu.py --application guard --esp out/NativeMmioTest/esp \
+              --firmware "$firmware" --gic-version "$gic" --log "out/NativeMmioTest/guard-gic$gic.log"
+            python3 scripts/test-probe-qemu.py --application native-gpu --esp out/LumiaGpuPower/esp \
+              --firmware "$firmware" --gic-version "$gic" --log "out/LumiaGpuPower/refusal-gic$gic.log"
+          done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -307,6 +324,8 @@ jobs:
           path: |
             out/gpu-preflight/**
             out/rpm-handoff/**
+            out/NativeMmioTest/**
+            out/LumiaGpuPower/**
 
   gicv2-emulation:
     runs-on: ubuntu-latest

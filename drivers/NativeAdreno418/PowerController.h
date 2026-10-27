@@ -38,11 +38,22 @@ struct Controller {
     rpm::VoteResult lastVote;
 };
 
+struct PinnedDependencies {
+    u32 graphicsMicrovolts;
+    u32 graphicsKHz;
+    bool directRailReady;
+    bool clockAcknowledged;
+    bool inheritedBusesUntouched;
+    bool exclusiveHardware;
+};
+
 bool validPlan(const Plan &plan, const rpm::VoteBank &bank);
 Result start(Controller &controller, const RegisterIo &io, rpm::VoteBank &bank,
              const Plan &plan, u32 rpmPolls, u32 rpmDelayUs, u32 mmioPolls);
 Result stop(Controller &controller, bool consumersQuiescent,
             u32 rpmPolls, u32 rpmDelayUs, u32 mmioPolls);
+Result startPinned(Controller &controller, const RegisterIo &io,
+                   const PinnedDependencies &dependencies, u32 mmioPolls);
 
 }
 }

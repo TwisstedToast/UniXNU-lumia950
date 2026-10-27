@@ -6,5 +6,7 @@
 
 bool ProbeRpmMmioReserved(const VOID *map, UINTN mapBytes, UINTN stride,
                           const adreno::rpm::MemoryLayout &layout, bool gcdQualified = false);
+bool ProbeMmioRangesReserved(const VOID *map, UINTN mapBytes, UINTN stride,
+    const adreno::rpm::MemoryRegion *regions, UINTN count, bool gcdQualified);
 
 #endif

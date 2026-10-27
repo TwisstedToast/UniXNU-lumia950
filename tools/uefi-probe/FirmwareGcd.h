@@ -13,5 +13,7 @@ struct ProbeRpmGcd {
 };
 
 ProbeRpmGcd ProbeFindRpmGcd(EFI_SYSTEM_TABLE *firmware, const adreno::rpm::MemoryLayout &layout);
+ProbeRpmGcd ProbeFindMmioGcd(EFI_SYSTEM_TABLE *firmware,
+                            const adreno::rpm::MemoryRegion (&regions)[3]);
 
 #endif

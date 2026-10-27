@@ -9,6 +9,18 @@
 #include "PlatformCheck.h"
 #include "ReportStore.h"
 #include "SmdMemory.h"
+#ifdef LUMIA_GPU_POWER_TEST
+#include "AdrenoCore.h"
+#include "A418Init.h"
+#include "BoardConstants.h"
+#include "PowerController.h"
+#include "SpmiCore.h"
+#include "SmmuRoutes.h"
+extern "C" bool NativeGuardedRead(UINT64, UINT32 *);
+extern "C" bool NativeGuardedWrite(UINT64, UINT32);
+extern "C" UINT64 NativeInstallVectors();
+extern "C" volatile UINT64 native_mmio_esr, native_mmio_far, native_mmio_elr;
+#endif
 
 extern "C" {
 #include "FramebufferCore.h"
@@ -26,6 +38,11 @@ bool reportOverflow;
 bool saveAttempted;
 const char *preflightStage;
 UINT64 timerFrequency;
+#ifdef LUMIA_GPU_POWER_TEST
+bool nativeVectorsActive;
+ProbeFramebuffer nativeFramebuffer;
+const char *nativeGpuStage;
+#endif
 
 void Print(const char *text)
 {
@@ -122,6 +139,9 @@ bool Translate(void *, u64 address, bool writing, u64 *par)
 bool NativeRead(void *, u64 address, u32 *value)
 {
     if (!value || (address & 3)) { return false; }
+#ifdef LUMIA_GPU_POWER_TEST
+    if (nativeVectorsActive) { return NativeGuardedRead(address, value); }
+#endif
     asm volatile("dsb sy" ::: "memory");
     *value = *reinterpret_cast<volatile UINT32 *>(address);
     asm volatile("dsb sy" ::: "memory");
@@ -131,6 +151,9 @@ bool NativeRead(void *, u64 address, u32 *value)
 bool NativeWrite(void *, u64 address, u32 value)
 {
     if (address & 3) { return false; }
+#ifdef LUMIA_GPU_POWER_TEST
+    if (nativeVectorsActive) { return NativeGuardedWrite(address, value); }
+#endif
     asm volatile("dsb sy" ::: "memory");
     *reinterpret_cast<volatile UINT32 *>(address) = value;
     asm volatile("dsb sy" ::: "memory");
@@ -283,9 +306,19 @@ void Number(const ProbeFramebuffer &framebuffer, UINT32 row, const char *label, 
     }
 }
 
+#ifdef LUMIA_GPU_POWER_TEST
+#include "NativeGpuPower.h"
+#endif
+
 [[noreturn]] void AfterExit(const ProbeFramebuffer &framebuffer, MemoryBinding &binding)
 {
     asm volatile("msr daifset, #15" ::: "memory");
+#ifdef LUMIA_GPU_POWER_TEST
+    nativeFramebuffer = framebuffer;
+    nativeGpuStage = "NATIVE CHANNEL";
+    NativeInstallVectors();
+    nativeVectorsActive = true;
+#endif
     const UINT32 blue = ProbeFramebufferColor(framebuffer.pixel_format, 80, 160, 255);
     ProbeFillRectangle(&framebuffer, 0, 0, framebuffer.width, framebuffer.height, 0);
     Line(framebuffer, 0, "POST EBS - CHECKING RPM", blue);
@@ -304,6 +337,9 @@ void Number(const ProbeFramebuffer &framebuffer, UINT32 row, const char *label, 
     SmdPipe pipe = {};
     if (claim == Result::Ok) {
         opened = openPipe(pipe, memoryIo(binding), 88, binding.layout.fifo.bytes / 2, true, true, 2000, 100);
+#ifdef LUMIA_GPU_POWER_TEST
+        if (opened == Result::Ok) { RunNativeGpuPower(framebuffer, pipe); }
+#endif
         if (opened == Result::Ok) { closed = closePipe(pipe, 2000, 100); }
     }
     const Result sampled = snapshotChannel(binding, last);
@@ -340,8 +376,14 @@ static EFI_STATUS Run(EFI_HANDLE image, EFI_SYSTEM_TABLE *systemTable)
     saveAttempted = false;
     preflightStage = "PLATFORM";
     firmware->ConOut->ClearScreen(firmware->ConOut);
+#ifdef LUMIA_GPU_POWER_TEST
+    Print("LUMIA 950 | NATIVE GPU POWER v1\r\n");
+    Print("Post-EBS PMI8994 supply, dedicated clock, GPU power and hardware setup.\r\n");
+    Print("No Windows. No shared-bus RPM changes. No DMA, rendered frame or iOS claim.\r\n");
+#else
     Print("LUMIA 950 | NATIVE RPM HANDOFF v3\r\n");
     Print("Optional post-EBS channel open/close; NO RPM packets or GPU writes.\r\n");
+#endif
     if (!LumiaPlatform()) {
         Print("PLATFORM_UNSUPPORTED: no SMEM, translation or MMIO access.\r\n");
         Print("RPM HANDOFF REFUSED - firmware retained.\r\n");
@@ -365,6 +407,13 @@ static EFI_STATUS Run(EFI_HANDLE image, EFI_SYSTEM_TABLE *systemTable)
         SavePreflight(image);
         return EFI_UNSUPPORTED;
     }
+#ifdef LUMIA_GPU_POWER_TEST
+    UINT64 stackSelection = 0;
+    asm volatile("mrs %0, spsel" : "=r"(stackSelection));
+    if (stackSelection != 1) { return EFI_UNSUPPORTED; }
+    preflightStage = "NATIVE_GPU_MAPPINGS";
+    if (!NativeGpuMappings(firmware)) { SavePreflight(image); return EFI_UNSUPPORTED; }
+#endif
     preflightStage = "SMEM_PROFILE";
     const ProbeFirmwareSmem smem = ProbeFindFirmwareSmem(firmware->BootServices);
     PrintHex("SMEM_STATUS", smem.status);
@@ -449,6 +498,11 @@ static EFI_STATUS Run(EFI_HANDLE image, EFI_SYSTEM_TABLE *systemTable)
     mapBytes = capacity;
     status = services->GetMemoryMap(&mapBytes, reinterpret_cast<EFI_MEMORY_DESCRIPTOR *>(map), &mapKey, &stride, &version);
     const bool mapValid = !EFI_ERROR(status) && mapBytes <= capacity;
+#ifdef LUMIA_GPU_POWER_TEST
+    if (!mapValid || !ProbeMmioRangesReserved(map, mapBytes, stride, nativeGpuRegions, 3, true)) {
+        services->FreePool(map); SavePreflight(image); return EFI_UNSUPPORTED;
+    }
+#endif
     const bool qualified = mapValid && ProbeRpmMmioReserved(map, mapBytes, stride, layout, gcd.qualified);
     const bool listed = mapValid && ProbeRpmMmioReserved(map, mapBytes, stride, layout);
     Print("EFI_MMIO_LISTING="); Print(listed ? "COMPLETE\r\n" : "NOT_COMPLETE\r\n");
@@ -470,7 +524,13 @@ static EFI_STATUS Run(EFI_HANDLE image, EFI_SYSTEM_TABLE *systemTable)
     SavePreflight(image);
     if (!qualified) { services->FreePool(map); return EFI_UNSUPPORTED; }
     preflightStage = "START_KEY";
+#ifdef LUMIA_GPU_POWER_TEST
+    Print("GPU POWER READY - Volume Up starts native GPU writes.\r\n");
+    Print("Graphics rail may be raised/enabled at 980mV; existing higher voltage is retained.\r\n");
+    Print("Only clk2/1 receives 19200 KHz. Resources remain pinned until reset.\r\n");
+#else
     Print("RPM HANDOFF READY - Volume Up starts the native test.\r\n");
+#endif
     Print("Any other key returns. Post-EBS results are screen-only.\r\n");
     EFI_INPUT_KEY key = {};
     status = WaitForKey(&key);
@@ -484,6 +544,9 @@ static EFI_STATUS Run(EFI_HANDLE image, EFI_SYSTEM_TABLE *systemTable)
     if (EFI_ERROR(status)) { services->FreePool(map); return status; }
     preflightStage = "FINAL_GCD_CHECK";
     if (!ProbeFindRpmGcd(firmware, layout).qualified) { services->FreePool(map); return EFI_UNSUPPORTED; }
+#ifdef LUMIA_GPU_POWER_TEST
+    if (!NativeGpuMappings(firmware)) { services->FreePool(map); return EFI_UNSUPPORTED; }
+#endif
     const auto getMap = services->GetMemoryMap;
     const auto exitServices = services->ExitBootServices;
     Print("Attempting native RPM handoff; force reboot after result.\r\n");
@@ -495,6 +558,9 @@ static EFI_STATUS Run(EFI_HANDLE image, EFI_SYSTEM_TABLE *systemTable)
         mapBytes = capacity;
         status = getMap(&mapBytes, reinterpret_cast<EFI_MEMORY_DESCRIPTOR *>(map), &mapKey, &stride, &version);
         if (EFI_ERROR(status) || mapBytes > capacity || !ProbeRpmMmioReserved(map, mapBytes, stride, layout, true)) { break; }
+#ifdef LUMIA_GPU_POWER_TEST
+        if (!ProbeMmioRangesReserved(map, mapBytes, stride, nativeGpuRegions, 3, true)) { break; }
+#endif
         status = exitServices(image, mapKey);
         if (!EFI_ERROR(status)) { AfterExit(framebuffer, binding); }
         if (status != EFI_INVALID_PARAMETER) { break; }
@@ -521,3 +587,19 @@ extern "C" EFI_STATUS EFIAPI UefiMain(EFI_HANDLE image, EFI_SYSTEM_TABLE *system
     }
     return status;
 }
+
+#ifdef LUMIA_GPU_POWER_TEST
+extern "C" [[noreturn]] void NativeFatalFault()
+{
+    const UINT32 color = ProbeFramebufferColor(nativeFramebuffer.pixel_format, 255, 90, 30);
+    ProbeFillRectangle(&nativeFramebuffer, 0, 0, nativeFramebuffer.width, nativeFramebuffer.height, 0);
+    Line(nativeFramebuffer, 0, "NATIVE GPU CPU EXCEPTION", color);
+    Line(nativeFramebuffer, 2, nativeGpuStage ? nativeGpuStage : "UNKNOWN STAGE", color);
+    Number(nativeFramebuffer, 4, "ESR EL1", native_mmio_esr, color);
+    Number(nativeFramebuffer, 5, "FAR EL1", native_mmio_far, color);
+    Number(nativeFramebuffer, 6, "ELR EL1", native_mmio_elr, color);
+    Line(nativeFramebuffer, 8, "FORCE REBOOT TO EXIT", color);
+    Flush(nativeFramebuffer, 0, nativeFramebuffer.height);
+    for (;;) { asm volatile("wfi"); }
+}
+#endif

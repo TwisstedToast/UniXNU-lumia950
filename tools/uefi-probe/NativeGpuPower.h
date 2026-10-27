@@ -1,0 +1,186 @@
+const MemoryRegion nativeGpuRegions[] = {
+    {lumia950::kMmssPhys, lumia950::kMmssPhys, 0x10000},
+    {lumia950::kGpuPhys, lumia950::kGpuPhys, 0x20000},
+    {spmi::kControllerPhysical, spmi::kControllerPhysical, 0x10000}
+};
+
+bool NativeGpuMappings(EFI_SYSTEM_TABLE *systemTable)
+{
+    const ProbeRpmGcd gcd = ProbeFindMmioGcd(systemTable, nativeGpuRegions);
+    PrintHex("GPU_GCD_STATUS", gcd.status);
+    if (!gcd.qualified) { return false; }
+    for (const MemoryRegion &region : nativeGpuRegions) {
+        for (u64 offset = 0; offset < region.bytes; offset += 4096) {
+            for (u32 access = 0; access < 2; ++access) {
+                u64 par = 0;
+                if (!Translate(nullptr, region.address + offset, access != 0, &par) || (par & 1) ||
+                    (par & 0x000ffffffffff000ull) != region.physical + offset ||
+                    ((par >> 56) != 0 && (par >> 56) != 4)) {
+                    PrintHex("GPU_BAD_MAPPING_ADDRESS", region.address + offset);
+                    PrintHex("GPU_BAD_MAPPING_PAR", par);
+                    return false;
+                }
+            }
+        }
+    }
+    Print("GPU_MMSS_SMMU_SPMI_MAPPINGS=DEVICE_IDENTITY\r\n");
+    return true;
+}
+
+struct NativeGpuContext { bool gpuAccessible; };
+
+bool NativeGpuAddress(NativeGpuContext &context, RegisterSpace space, u32 offset, u64 &address)
+{
+    if ((offset & 3) || offset >= 0x10000) { return false; }
+    if (space == RegisterSpace::Mmss) { address = lumia950::kMmssPhys + offset; return true; }
+    if (!context.gpuAccessible) { return false; }
+    if (space == RegisterSpace::Gpu) { address = lumia950::kGpuPhys + offset; return true; }
+    if (space == RegisterSpace::Smmu) { address = lumia950::kGpuSmmuPhys + offset; return true; }
+    return false;
+}
+
+bool NativeGpuRead(void *opaque, RegisterSpace space, u32 offset, u32 *value)
+{
+    u64 address = 0;
+    return opaque && NativeGpuAddress(*static_cast<NativeGpuContext *>(opaque), space, offset, address) &&
+        NativeRead(nullptr, address, value);
+}
+
+bool NativeGpuWrite(void *opaque, RegisterSpace space, u32 offset, u32 value)
+{
+    u64 address = 0;
+    return opaque && NativeGpuAddress(*static_cast<NativeGpuContext *>(opaque), space, offset, address) &&
+        NativeWrite(nullptr, address, value);
+}
+
+void NativeGpuBarrier(void *) { Barrier(nullptr); }
+
+bool NativeSpmiRead(void *, u32 offset, u32 *value)
+{
+    if (offset != spmi::kVersionOffset && offset != spmi::kConfigurationOffset &&
+        offset != spmi::kStatusOffset && offset != spmi::kReadDataOffset) { return false; }
+    return NativeRead(nullptr, spmi::kControllerPhysical + offset, value);
+}
+
+bool NativeSpmiWrite(void *, u32 offset, u32 value)
+{
+    if (offset != spmi::kCommandOffset && offset != spmi::kWriteDataOffset) { return false; }
+    return NativeWrite(nullptr, spmi::kControllerPhysical + offset, value);
+}
+
+struct NativeGpuResult {
+    spmi::Bus bus;
+    spmi::Rail rail;
+    spmi::Result supply;
+    rpm::Session session;
+    rpm::Result clock;
+    power::Controller power;
+    power::Result powerResult;
+    GpuSnapshot snapshot;
+    ProbeResult identity;
+    CommandHardware hardware;
+    HardwareResult hardwareResult;
+    smmu::Routes routes;
+    smmu::RouteResult routeResult;
+    bool complete;
+};
+
+void NativeGpuProgress(const ProbeFramebuffer &framebuffer, const char *stage)
+{
+    nativeGpuStage = stage;
+    const u32 color = ProbeFramebufferColor(framebuffer.pixel_format, 60, 170, 255);
+    ProbeFillRectangle(&framebuffer, 0, 0, framebuffer.width, 160, 0);
+    Line(framebuffer, 0, "NATIVE GPU - POST EBS", color);
+    Line(framebuffer, 2, stage, color);
+    Flush(framebuffer, 0, 160);
+}
+
+[[noreturn]] void NativeGpuResultScreen(const ProbeFramebuffer &framebuffer, const NativeGpuResult &result)
+{
+    const u32 color = ProbeFramebufferColor(framebuffer.pixel_format,
+        result.complete ? 40 : 255, result.complete ? 255 : 100, 60);
+    NativeGpuContext context = {};
+    PowerSnapshot observed = {};
+    const RegisterIo registers = {&context, NativeGpuRead, NativeGpuWrite, NativeGpuBarrier, Delay};
+    readPower(registers, &observed);
+    ProbeFillRectangle(&framebuffer, 0, 0, framebuffer.width, framebuffer.height, 0);
+    Line(framebuffer, 0, result.complete ? "NATIVE GPU HARDWARE INITIALIZED" : "NATIVE GPU ACTIVATION STOPPED", color);
+    Line(framebuffer, 1, "NO WINDOWS OR FIRMWARE CALLS", color);
+    Line(framebuffer, 3, nativeGpuStage, color);
+    Line(framebuffer, 5, spmi::resultName(result.supply), color);
+    Number(framebuffer, 6, "RAIL UV", result.rail.final.microvolts, color);
+    Number(framebuffer, 7, "SPMI STATUS", result.bus.status, color);
+    Line(framebuffer, 8, ResultName(result.clock), color);
+    Number(framebuffer, 9, "POWER RESULT", static_cast<u32>(result.powerResult), color);
+    Number(framebuffer, 10, "GX GDSCR", observed.gx, color);
+    Number(framebuffer, 11, "CX GDSCR", observed.cx, color);
+    Number(framebuffer, 12, "CORE CBCR", observed.coreClock, color);
+    Number(framebuffer, 13, "AHB CBCR", observed.ahbClock, color);
+    Number(framebuffer, 14, "TIMER CBCR", observed.timerClock, color);
+    Number(framebuffer, 16, "GPU VERSION", result.snapshot.version, color);
+    Number(framebuffer, 17, "GPU CONFIG", result.snapshot.configuration, color);
+    Number(framebuffer, 18, "HW INIT", static_cast<u32>(result.hardwareResult), color);
+    Number(framebuffer, 19, "SMMU ROUTES", static_cast<u32>(result.routeResult), color);
+    Number(framebuffer, 20, "SMMU IDR0", result.routes.id[0], color);
+    Number(framebuffer, 21, "SMMU IDR1", result.routes.id[1], color);
+    Number(framebuffer, 22, "SMMU CR0", result.routes.control, color);
+    Number(framebuffer, 24, "ABORT ESR", native_mmio_esr, color);
+    Number(framebuffer, 25, "ABORT FAR", native_mmio_far, color);
+    Line(framebuffer, 27, "NO SHADER FRAME OR IOS CLAIMED", color);
+    Line(framebuffer, 28, "RESOURCES PINNED - FORCE REBOOT", color);
+    Flush(framebuffer, 0, framebuffer.height);
+    for (;;) { asm volatile("wfi"); }
+}
+
+[[noreturn]] void RunNativeGpuPower(const ProbeFramebuffer &framebuffer, SmdPipe &pipe)
+{
+    NativeGpuResult result = {};
+    result.supply = spmi::Result::NotReady;
+    result.clock = rpm::Result::NotReady;
+    result.powerResult = power::Result::NotReady;
+    result.hardwareResult = HardwareResult::NotReady;
+    result.routeResult = smmu::RouteResult::NotReady;
+    NativeGpuContext context = {};
+    const RegisterIo registers = {&context, NativeGpuRead, NativeGpuWrite, NativeGpuBarrier, Delay};
+    NativeGpuProgress(framebuffer, "CHECKING COLD GRAPHICS DOMAINS");
+    PowerSnapshot initial = {};
+    if (readPower(registers, &initial) == ProbeResult::IoError ||
+        ((initial.gx | initial.cx) & lumia950::kGdscrPowerOn) ||
+        !(initial.gx & kGdscrSwCollapse) || !(initial.cx & kGdscrSwCollapse) ||
+        gdscrUnderHardwareControl(initial.gx) || gdscrUnderHardwareControl(initial.cx) ||
+        ((initial.coreClock | initial.ahbClock | initial.timerClock) & kBranchEnable)) {
+        NativeGpuResultScreen(framebuffer, result);
+    }
+    NativeGpuProgress(framebuffer, "PMI8994 DIRECT GRAPHICS SUPPLY");
+    const spmi::Io supplyIo = {nullptr, NativeSpmiRead, NativeSpmiWrite, NativeGpuBarrier, Delay};
+    result.supply = spmi::bind(result.bus, supplyIo, true, true);
+    if (result.supply == spmi::Result::Ok) {
+        result.supply = spmi::enableGraphicsRail(result.bus, result.rail, true, 10000);
+    }
+    if (result.supply != spmi::Result::Ok) { NativeGpuResultScreen(framebuffer, result); }
+    NativeGpuProgress(framebuffer, "NATIVE GRAPHICS CLOCK REQUEST");
+    result.clock = rpm::bindSession(result.session, pipeTransport(pipe), 0x41810000, true);
+    const rpm::Value rate = {rpm::kRateKey, 19200};
+    if (result.clock == rpm::Result::Ok) {
+        result.clock = rpm::transact(result.session, rpm::Set::Active, rpm::kGraphicsParent, &rate, 1, 10000, 10);
+    }
+    if (result.clock != rpm::Result::Ok) { NativeGpuResultScreen(framebuffer, result); }
+    NativeGpuProgress(framebuffer, "ENABLING OXILI DOMAINS AND CLOCKS");
+    const power::PinnedDependencies dependencies = {result.rail.final.microvolts, 19200, true, true, true, true};
+    result.powerResult = power::startPinned(result.power, registers, dependencies, 10000);
+    if (result.powerResult != power::Result::Ok) { NativeGpuResultScreen(framebuffer, result); }
+    context.gpuAccessible = true;
+    NativeGpuProgress(framebuffer, "READING REAL GPU HARDWARE");
+    result.identity = readSnapshot(registers, &result.snapshot);
+    if (result.identity != ProbeResult::Ready || !plausibleVersion(result.snapshot.version)) {
+        NativeGpuResultScreen(framebuffer, result);
+    }
+    NativeGpuProgress(framebuffer, "INITIALIZING A418 COMMAND HARDWARE");
+    const HardwareContract contract = {lumia950::kChipId, true, true};
+    result.hardwareResult = initializeCommandHardware(result.hardware, registers, contract, 10000);
+    if (result.hardwareResult != HardwareResult::Ok) { NativeGpuResultScreen(framebuffer, result); }
+    NativeGpuProgress(framebuffer, "INSPECTING INHERITED SMMU ROUTES");
+    result.routeResult = smmu::inspectRoutes(result.routes, registers, {true, true, true});
+    result.complete = true;
+    NativeGpuResultScreen(framebuffer, result);
+}

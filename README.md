@@ -484,11 +484,9 @@ The new GPU backend, pinned firmware, tests, and remaining path to a real accele
 are documented in [GPU bring-up](docs/gpu-bringup.md). The default driver remains read-only:
 it checks both power domains and all three clock branches before accessing GPU registers.
 
-For a visible hardware-rendered animation sooner, the optional
-[Windows GPU baseline](tools/gpu-demo/README.md) uses the existing Adreno 418 driver,
-VSync presentation, GPU timestamps and independent DXGI display-FPS statistics.
-It refuses software rendering. This is a Windows-only validation tool, not native
-iOS acceleration; no handset FPS result is claimed by building it.
+The active route is [firmware-native bring-up](docs/native-bringup.md): a post-EBS
+Adreno hardware-activation entry and a separate source-only XNU early-boot entry.
+Neither requires Windows. Neither is yet a GPU-rendered frame or a booted iOS UI.
 
 Upstream's [Adreno 740 driver](../unixnu/docs/drivers/native-adreno.md) drives a6xx/a7xx
 silicon: a GMU that boots firmware and owns power, a shared 4 KiB SMMU through `ArmSmmu4K`,

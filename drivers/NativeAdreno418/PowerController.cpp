@@ -101,6 +101,39 @@ bool resourceIs(const rpm::VoteSpec &spec, rpm::Resource resource)
         spec.resource.id == resource.id;
 }
 
+Result coldSnapshot(const RegisterIo &io, PowerSnapshot &initial)
+{
+    const ProbeResult sampled = readPower(io, &initial);
+    if (sampled == ProbeResult::IoError || sampled == ProbeResult::NoResponse) { return Result::IoError; }
+    const u32 domains[] = {initial.cx, initial.gx};
+    for (u32 value : domains) {
+        if ((value & lumia950::kGdscrPowerOn) || !(value & kGdscrSwCollapse) ||
+            gdscrUnderHardwareControl(value)) { return Result::Unqualified; }
+    }
+    return ((initial.coreClock | initial.ahbClock | initial.timerClock) & kBranchEnable) ?
+        Result::Unqualified : Result::Ok;
+}
+
+Result enableClocks(Controller &controller, u32 mmioPolls)
+{
+    controller.state = State::Enabling;
+    const u32 domainOffsets[] = {lumia950::kGdscrCxOffset, lumia950::kGdscrGxOffset};
+    for (u32 offset : domainOffsets) {
+        const Result result = domain(controller, offset, true, mmioPolls);
+        if (result != Result::Ok) { return fail(controller, result); }
+    }
+    const Result retained = retention(controller, true);
+    if (retained != Result::Ok) { return fail(controller, retained); }
+    const u32 branches[] = {kAhbClockOffset, kTimerClockOffset, kCoreClockOffset};
+    for (u32 offset : branches) {
+        const Result result = branch(controller, offset, true, mmioPolls);
+        if (result != Result::Ok) { return fail(controller, result); }
+    }
+    if (readPower(controller.io, &controller.final) != ProbeResult::Ready) { return fail(controller, Result::NotReady); }
+    controller.state = State::Ready;
+    return Result::Ok;
+}
+
 }
 
 bool validPlan(const Plan &plan, const rpm::VoteBank &bank)
@@ -149,16 +182,8 @@ Result start(Controller &controller, const RegisterIo &io, rpm::VoteBank &bank,
     if (!validPlan(plan, bank) || !io.read || !io.write || !io.barrier || !io.delayUs ||
         rpmPolls < 2 || !validBudget(rpmPolls, rpmDelayUs) || !validBudget(mmioPolls, 1)) { return Result::Invalid; }
     PowerSnapshot initial = {};
-    const ProbeResult sampled = readPower(io, &initial);
-    if (sampled == ProbeResult::IoError || sampled == ProbeResult::NoResponse) { return Result::IoError; }
-    const u32 domains[] = {initial.cx, initial.gx};
-    for (u32 value : domains) {
-        if ((value & lumia950::kGdscrPowerOn) || !(value & kGdscrSwCollapse) ||
-            gdscrUnderHardwareControl(value)) { return Result::Unqualified; }
-    }
-    if ((initial.coreClock | initial.ahbClock | initial.timerClock) & kBranchEnable) {
-        return Result::Unqualified;
-    }
+    const Result sampled = coldSnapshot(io, initial);
+    if (sampled != Result::Ok) { return sampled; }
     controller.io = io;
     controller.bank = &bank;
     controller.plan = plan;
@@ -173,22 +198,30 @@ Result start(Controller &controller, const RegisterIo &io, rpm::VoteBank &bank,
         if (controller.lastVote != rpm::VoteResult::Ok) { return fail(controller, Result::RpmFailure); }
         ++controller.acquired;
     }
-    controller.state = State::Enabling;
-    const u32 domainOffsets[] = {lumia950::kGdscrCxOffset, lumia950::kGdscrGxOffset};
-    for (u32 offset : domainOffsets) {
-        const Result result = domain(controller, offset, true, mmioPolls);
-        if (result != Result::Ok) { return fail(controller, result); }
+    return enableClocks(controller, mmioPolls);
+}
+
+Result startPinned(Controller &controller, const RegisterIo &io,
+                   const PinnedDependencies &dependencies, u32 mmioPolls)
+{
+    if (controller.state != State::Empty) { return Result::NotReady; }
+    if (!dependencies.exclusiveHardware || !dependencies.directRailReady ||
+        !dependencies.clockAcknowledged || !dependencies.inheritedBusesUntouched ||
+        dependencies.graphicsKHz != 19200 || dependencies.graphicsMicrovolts < 980000 ||
+        dependencies.graphicsMicrovolts > 1355000) { return Result::Unqualified; }
+    if (!io.read || !io.write || !io.barrier || !io.delayUs || !validBudget(mmioPolls, 1)) {
+        return Result::Invalid;
     }
-    const Result retained = retention(controller, true);
-    if (retained != Result::Ok) { return fail(controller, retained); }
-    const u32 branches[] = {kAhbClockOffset, kTimerClockOffset, kCoreClockOffset};
-    for (u32 offset : branches) {
-        const Result result = branch(controller, offset, true, mmioPolls);
-        if (result != Result::Ok) { return fail(controller, result); }
-    }
-    if (readPower(io, &controller.final) != ProbeResult::Ready) { return fail(controller, Result::NotReady); }
-    controller.state = State::Ready;
-    return Result::Ok;
+    PowerSnapshot initial = {};
+    const Result sampled = coldSnapshot(io, initial);
+    if (sampled != Result::Ok) { return sampled; }
+    controller.io = io;
+    controller.initial = initial;
+    controller.bank = nullptr;
+    controller.plan = {};
+    controller.acquired = 0;
+    controller.polls = 0;
+    return enableClocks(controller, mmioPolls);
 }
 
 Result stop(Controller &controller, bool consumersQuiescent,

@@ -25,11 +25,17 @@ bool Covers(const EFI_GCD_MEMORY_SPACE_DESCRIPTOR &descriptor, const adreno::rpm
 
 ProbeRpmGcd ProbeFindRpmGcd(EFI_SYSTEM_TABLE *firmware, const adreno::rpm::MemoryLayout &layout)
 {
+    const adreno::rpm::MemoryRegion regions[] = {layout.control, layout.fifo, layout.doorbell};
+    return ProbeFindMmioGcd(firmware, regions);
+}
+
+ProbeRpmGcd ProbeFindMmioGcd(EFI_SYSTEM_TABLE *firmware,
+                            const adreno::rpm::MemoryRegion (&regions)[3])
+{
     ProbeRpmGcd result = {};
     result.status = EFI_INVALID_PARAMETER;
     if (!firmware || !firmware->ConfigurationTable || !firmware->NumberOfTableEntries ||
         firmware->NumberOfTableEntries > 4096) { return result; }
-    const adreno::rpm::MemoryRegion regions[] = {layout.control, layout.fifo, layout.doorbell};
     for (const auto &region : regions) {
         if (!region.physical || !region.bytes || region.physical > ~static_cast<UINT64>(0) - region.bytes) {
             return result;
