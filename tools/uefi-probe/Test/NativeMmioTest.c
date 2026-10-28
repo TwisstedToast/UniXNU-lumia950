@@ -11,6 +11,12 @@ VOID NativeFatalFault(VOID)
     for (;;) { __asm__ volatile("wfi"); }
 }
 
+BOOLEAN NativeIrqDispatch(VOID)
+{
+    NativeFatalFault();
+    return FALSE;
+}
+
 EFI_STATUS EFIAPI UefiMain(EFI_HANDLE image, EFI_SYSTEM_TABLE *firmware)
 {
     (void)image;

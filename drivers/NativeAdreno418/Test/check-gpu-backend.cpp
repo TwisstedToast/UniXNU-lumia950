@@ -434,6 +434,41 @@ static void updateChecksum(std::vector<u8> &bytes)
     bytes[9] = static_cast<u8>(0u - sum);
 }
 
+static void testTimerPlatform()
+{
+    std::vector<u8> table(156);
+    store32(table.data(), 0x54445447);
+    store32(table.data() + 4, static_cast<u32>(table.size()));
+    store32(table.data() + 64, 20);
+    updateChecksum(table);
+    expect(isLumia950Gtdt(table.data(), static_cast<u32>(table.size())), "Lumia virtual timer GSI 20 is independently checked");
+    for (u32 interrupt = 0; interrupt < 64; ++interrupt) {
+        auto changed = table;
+        store32(changed.data() + 64, interrupt);
+        updateChecksum(changed);
+        expect(isLumia950Gtdt(changed.data(), static_cast<u32>(changed.size())) == (interrupt == 20),
+            "wrong-platform virtual timer IRQ is refused before GIC writes");
+    }
+    for (u32 flags : {0u, 1u, 2u, 3u, 4u, 8u, 0xffffffffu}) {
+        auto changed = table;
+        store32(changed.data() + 68, flags);
+        updateChecksum(changed);
+        expect(isLumia950Gtdt(changed.data(), static_cast<u32>(changed.size())) == (flags == 0 || flags == 4),
+            "only level-high timer with optional always-on flag is accepted");
+    }
+    for (u32 bytes = 0; bytes < 80; ++bytes) {
+        expect(!isLumia950Gtdt(table.data(), bytes), "truncated timer description is refused");
+    }
+    auto corrupt = table;
+    corrupt[9] ^= 1;
+    expect(!isLumia950Gtdt(corrupt.data(), static_cast<u32>(corrupt.size())), "bad timer table checksum is refused");
+    corrupt = table;
+    corrupt[0] = 'A';
+    updateChecksum(corrupt);
+    expect(!isLumia950Gtdt(corrupt.data(), static_cast<u32>(corrupt.size())), "another ACPI table cannot qualify the timer");
+    expect(!isLumia950Gtdt(nullptr, 156), "missing timer table is refused");
+}
+
 static void testPlatform()
 {
     std::vector<u8> table(44 + 6 * 80 + 24);
@@ -474,7 +509,7 @@ static void testPlatform()
 
 int main(int argumentCount, char **arguments)
 {
-    testPower(); testMappings(); testQueue(); testRefusals(); testContexts(); testPlatform();
+    testPower(); testMappings(); testQueue(); testRefusals(); testContexts(); testPlatform(); testTimerPlatform();
     if (argumentCount == 2) {
         std::FILE *fixture = std::fopen(arguments[1], "rb");
         std::vector<u8> bytes(65536);

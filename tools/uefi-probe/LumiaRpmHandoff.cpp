@@ -18,11 +18,13 @@
 #include "PinnedGraphics.h"
 #include "SecureSmmu.h"
 #include "GpuDiagnostic.h"
+#include "GicRuntimeCore.h"
 static_assert(SCAN_UP == 1 && SCAN_DOWN == 2, "GPU diagnostic scan codes must match EFI input");
 extern "C" bool NativeGuardedRead(UINT64, UINT32 *);
 extern "C" bool NativeGuardedWrite(UINT64, UINT32);
 extern "C" bool NativeGuardedScmCall(adreno::secure::MonitorRegisters *);
 extern "C" UINT64 NativeInstallVectors();
+extern "C" [[noreturn]] void NativeFatalFault();
 extern "C" volatile UINT64 native_mmio_esr, native_mmio_far, native_mmio_elr;
 #endif
 
@@ -434,7 +436,8 @@ static EFI_STATUS Run(EFI_HANDLE image, EFI_SYSTEM_TABLE *systemTable)
 #ifdef LUMIA_GPU_POWER_TEST
     nativeGpuMode = ProbeGpuMode::Cancelled;
     nativeGpuCheckpoint = 0;
-    Print("LUMIA 950 | NATIVE GPU POWER v8\r\n");
+    nativeInterruptContext = nullptr;
+    Print("LUMIA 950 | NATIVE GPU POWER v9\r\n");
     Print("Post-EBS PMI8994 supply, dedicated clock, GPU power and hardware setup.\r\n");
     Print("No Windows. No shared-bus RPM changes. No DMA, rendered frame or iOS claim.\r\n");
 #else
@@ -461,6 +464,8 @@ static EFI_STATUS Run(EFI_HANDLE image, EFI_SYSTEM_TABLE *systemTable)
     Print("Device-18 restore uses the advertised SMC32/SMC64 interface, not an ABI guess.\r\n");
     Print("Secure monitor entry may reset or hang the handset; this is not a confirmed reset fix.\r\n");
     Print("Protected global ID/route registers are NOT probed. Context banks are read-only.\r\n");
+    Print("Secure mode requires native GICv2, two real timer IRQs and a self-SGI first.\r\n");
+    Print("SMC descriptor IDs and negotiated wire convention are unchanged from v8.\r\n");
 #endif
     preflightStage = "CPU_CONTEXT";
     UINT64 currentEl, control, affinity, identity;
@@ -618,6 +623,17 @@ static EFI_STATUS Run(EFI_HANDLE image, EFI_SYSTEM_TABLE *systemTable)
 #else
     const bool selected = !EFI_ERROR(status) && key.ScanCode == SCAN_UP;
 #endif
+#ifdef LUMIA_GPU_POWER_TEST
+    if (ProbeGpuAllowsSecure(nativeGpuMode)) {
+        preflightStage = "NATIVE_IRQ_MAPPINGS";
+        if (!NativeGpuInterruptMappings(firmware, map, mapBytes, stride)) {
+            SavePreflight(image);
+            services->FreePool(map);
+            return EFI_UNSUPPORTED;
+        }
+        Print("NATIVE_IRQ_WRITES_BEFORE_EXIT=NONE\r\n");
+    }
+#endif
     SavePreflight(image);
     if (!selected) {
         Print("RPM HANDOFF CANCELLED - firmware retained.\r\n");
@@ -631,6 +647,11 @@ static EFI_STATUS Run(EFI_HANDLE image, EFI_SYSTEM_TABLE *systemTable)
     if (!ProbeFindRpmGcd(firmware, layout).qualified) { services->FreePool(map); return EFI_UNSUPPORTED; }
 #ifdef LUMIA_GPU_POWER_TEST
     if (!NativeGpuMappings(firmware)) { services->FreePool(map); return EFI_UNSUPPORTED; }
+    if (ProbeGpuAllowsSecure(nativeGpuMode) &&
+        !NativeGpuInterruptMappings(firmware, map, mapBytes, stride)) {
+        services->FreePool(map);
+        return EFI_UNSUPPORTED;
+    }
 #endif
     const auto getMap = services->GetMemoryMap;
     const auto exitServices = services->ExitBootServices;
@@ -648,6 +669,8 @@ static EFI_STATUS Run(EFI_HANDLE image, EFI_SYSTEM_TABLE *systemTable)
         if (EFI_ERROR(status) || mapBytes > capacity || !ProbeRpmMmioReserved(map, mapBytes, stride, layout, true)) { break; }
 #ifdef LUMIA_GPU_POWER_TEST
         if (!ProbeMmioRangesReserved(map, mapBytes, stride, nativeGpuRegions, 3, true)) { break; }
+        if (ProbeGpuAllowsSecure(nativeGpuMode) &&
+            !ProbeMmioRangesReserved(map, mapBytes, stride, nativeRuntimeRegions, 3, true)) { break; }
 #endif
         status = exitServices(image, mapKey);
         if (!EFI_ERROR(status)) { AfterExit(framebuffer, binding); }
@@ -677,8 +700,24 @@ extern "C" EFI_STATUS EFIAPI UefiMain(EFI_HANDLE image, EFI_SYSTEM_TABLE *system
 }
 
 #ifdef LUMIA_GPU_POWER_TEST
+extern "C" bool NativeIrqDispatch()
+{
+    if (!nativeInterruptContext) { NativeFatalFault(); }
+    nativeInterruptContext->runtime.dispatch();
+    if (nativeInterruptContext->mmioFault) {
+        nativeInterruptContext->result = gicv2::RuntimeResult::ControllerRejected;
+        return false;
+    }
+    if (nativeInterruptContext->runtime.state() == gicv2::RuntimeState::Failed) {
+        nativeInterruptContext->result = nativeInterruptContext->runtime.result();
+        return false;
+    }
+    return true;
+}
+
 extern "C" [[noreturn]] void NativeFatalFault()
 {
+    asm volatile("msr daifset, #15" ::: "memory");
     const UINT32 color = ProbeFramebufferColor(nativeFramebuffer.pixel_format, 255, 90, 30);
     ProbeFillRectangle(&nativeFramebuffer, 0, 0, nativeFramebuffer.width, nativeFramebuffer.height, 0);
     Line(nativeFramebuffer, 0, "NATIVE GPU CPU EXCEPTION", color);

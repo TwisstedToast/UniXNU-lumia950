@@ -38,6 +38,19 @@ from_el3:
     msr cnthctl_el2, x0
     msr cntvoff_el2, xzr
     msr cptr_el2, xzr
+#ifdef GIC_TEST_NATIVE_RUNTIME
+    mrs x0, hcr_el2
+    orr x0, x0, #(1 << 19)
+    msr hcr_el2, x0
+    adr x0, native_el2_vectors
+    msr vbar_el2, x0
+    ldr x0, =native_el2_stack_top
+    msr sp_el2, x0
+    adr x0, native_el3_vectors
+    msr vbar_el3, x0
+    ldr x0, =native_el3_stack_top
+    mov sp, x0
+#endif
     msr sp_el1, x1
     mov x0, #0x3c5
     msr spsr_el3, x0
@@ -140,6 +153,78 @@ irq_vector:
 failed_vector:
     bl gic_test_exception
     b .
+#ifdef GIC_TEST_NATIVE_RUNTIME
+.balign 2048
+native_el2_vectors:
+    VECTOR native_higher_el_failure
+    VECTOR native_higher_el_failure
+    VECTOR native_higher_el_failure
+    VECTOR native_higher_el_failure
+    VECTOR native_higher_el_failure
+    VECTOR native_higher_el_failure
+    VECTOR native_higher_el_failure
+    VECTOR native_higher_el_failure
+    VECTOR native_el2_smc
+    VECTOR native_higher_el_failure
+    VECTOR native_higher_el_failure
+    VECTOR native_higher_el_failure
+    VECTOR native_higher_el_failure
+    VECTOR native_higher_el_failure
+    VECTOR native_higher_el_failure
+    VECTOR native_higher_el_failure
+native_el2_smc:
+    stp x15, x16, [sp, #-16]!
+    mrs x15, esr_el2
+    lsr x15, x15, #26
+    cmp x15, #0x17
+    b.ne native_higher_el_failure
+    mrs x16, elr_el2
+    add x16, x16, #4
+    msr elr_el2, x16
+    adrp x15, native_el2_smc_traps
+    add x15, x15, :lo12:native_el2_smc_traps
+    ldr w16, [x15]
+    add w16, w16, #1
+    str w16, [x15]
+    ldp x15, x16, [sp], #16
+    smc #0
+    eret
+.balign 2048
+native_el3_vectors:
+    VECTOR native_higher_el_failure
+    VECTOR native_higher_el_failure
+    VECTOR native_higher_el_failure
+    VECTOR native_higher_el_failure
+    VECTOR native_higher_el_failure
+    VECTOR native_higher_el_failure
+    VECTOR native_higher_el_failure
+    VECTOR native_higher_el_failure
+    VECTOR native_el3_smc
+    VECTOR native_higher_el_failure
+    VECTOR native_higher_el_failure
+    VECTOR native_higher_el_failure
+    VECTOR native_higher_el_failure
+    VECTOR native_higher_el_failure
+    VECTOR native_higher_el_failure
+    VECTOR native_higher_el_failure
+native_el3_smc:
+    stp x8, x9, [sp, #-16]!
+    mrs x8, esr_el3
+    lsr x8, x8, #26
+    cmp x8, #0x17
+    b.ne native_higher_el_failure
+    adrp x8, native_monitor_stub_calls
+    add x8, x8, :lo12:native_monitor_stub_calls
+    ldr w9, [x8]
+    add w9, w9, #1
+    str w9, [x8]
+    mov x0, #-1
+    ldp x8, x9, [sp], #16
+    eret
+native_higher_el_failure:
+    wfe
+    b native_higher_el_failure
+#endif
 parked_secondary:
     wfe
     b parked_secondary
@@ -148,3 +233,9 @@ parked_secondary:
 .balign 16
     .space 16384
 stack_top:
+#ifdef GIC_TEST_NATIVE_RUNTIME
+    .space 2048
+native_el2_stack_top:
+    .space 2048
+native_el3_stack_top:
+#endif

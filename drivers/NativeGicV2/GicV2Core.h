@@ -9,7 +9,7 @@ static_assert(sizeof(u8) == 1 && sizeof(u32) == 4, "GIC register widths");
 enum class Space : u8 { Distributor, Cpu };
 enum class Error : u8 {
     None, InvalidArgument, NotConfigured, WrongArchitecture,
-    InvalidCpuTarget, RegisterRejected, NotPrepared
+    InvalidCpuTarget, RegisterRejected, NotPrepared, SecureAccess
 };
 
 struct RegisterIo {
@@ -25,8 +25,8 @@ u32 interruptId(u32 acknowledge);
 class Controller {
 public:
     bool configure(const RegisterIo &registers, u32 distributorBytes, u32 cpuBytes);
-    bool prepareDistributor();
-    bool prepareLocal();
+    bool prepareDistributor(bool requireNonSecure = false);
+    bool prepareLocal(u32 timerInterrupt = 27);
     bool enableLocal();
     void disableLocal();
     bool configureSpi(u32 id, bool edge, u8 priority = 0xa0);
@@ -50,6 +50,7 @@ private:
     u32 distBytes = 0;
     u32 interfaceBytes = 0;
     u32 interrupts = 0;
+    u32 localInterruptMask = 0;
     u8 target = 0;
     bool secure = false;
     bool securityExtensions = false;

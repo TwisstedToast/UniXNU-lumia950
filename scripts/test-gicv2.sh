@@ -8,3 +8,7 @@ mkdir -p "$OUT"
   "$ROOT/drivers/NativeGicV2/GicV2Core.cpp" \
   "$ROOT/drivers/NativeGicV2/Test/check-gicv2.cpp" -o "$OUT/check-gicv2"
 "$OUT/check-gicv2"
+"$CXX" -std=c++17 -Wall -Wextra -Werror -Wconversion -Wsign-conversion -fsanitize=address,undefined \
+  "$ROOT/drivers/NativeGicV2/GicV2Core.cpp" "$ROOT/drivers/NativeGicV2/GicRuntimeCore.cpp" \
+  "$ROOT/drivers/NativeGicV2/Test/check-gic-runtime.cpp" -o "$OUT/check-gic-runtime"
+"$OUT/check-gic-runtime"

@@ -1,8 +1,17 @@
-# Lumia 950: GPU backend and the real iOS UI target
+# Lumia 950: native GPU, then touchscreen
 
-The target is **real iOS userland, wallpaper, and hardware-accelerated compositing** on
-the Lumia 950. An EFI picture, a CPU framebuffer renderer, or a simulated GPU test is not
-that result. None of the changes below claim that iOS or Metal is running on the handset.
+The current order is **real native GPU output, then real touchscreen input, then iOS**.
+The GPU milestone requires completed GPU work producing visible frames on the handset,
+not a Windows application, a CPU-drawn framebuffer animation or a simulated test.
+A command-processor memory-write proof is useful but is not a shader-rendered frame.
+Completed-frame throughput and display/presentation rate must be measured separately;
+the camera's recording rate and a timed CPU loop do not establish 60 FPS rendering.
+
+After GPU output works, touch must come from the physical controller's contact reports
+and native interrupts, including down/move/up coordinates while the display remains live.
+Firmware pointer events and desktop mouse input do not establish native touchscreen support.
+The existing experimental XNU artifacts remain available, but kernel/userspace integration
+is deferred until those hardware milestones. No iOS or Metal handset success is claimed.
 
 ## Implemented in this pass
 

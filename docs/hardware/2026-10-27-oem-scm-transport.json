@@ -80,7 +80,54 @@
       "PrePi/Pi.c": "7f24cd08066897a8be80f92febb7f60c3c05dcfbd367e28bc465ca59d920c241"
     },
     "source_observation": "The pinned PrePi patches EL2 SMC traps and forwards non-PSCI SMC calls; this is source evidence, not live hypervisor readback or proof that monitor entry returns",
-    "live_hypervisor_qualified": false
+    "live_hypervisor_qualified": false,
+    "captured_uefi_image": {
+      "filename": "UEFI.elf",
+      "bytes": 1114880,
+      "sha256": "00420de94f7a1ff3d2056c51ba856298cec10655c9840341114c518f19410c9f",
+      "captured_from_fresh_read_only_mount": true,
+      "unchanged_from_original_boot_chain": true,
+      "elf_machine": "AArch64",
+      "elf_entry_hex": "200000",
+      "load_file_offset_hex": "10000",
+      "load_virtual_address_hex": "200000",
+      "load_bytes": 1048576,
+      "compiled_patch_arrays": [
+        {
+          "name": "WakeFromPowerGatePatchHandler",
+          "file_offset_hex": "193A8",
+          "words": 4,
+          "sha256": "f06c91ca4b06848dbc2c4aa62808fa159c85bd877fe98ed284b58d68ef340e55",
+          "target_physical_hex": "06C001F8",
+          "copy_call_linked_address_hex": "20696C"
+        },
+        {
+          "name": "LowerELSynchronous64PatchHandler",
+          "silicon_platform": 8992,
+          "file_offset_hex": "19354",
+          "words": 21,
+          "sha256": "556a6b58312fc312f798ac024b2b2d5ad0486b4f8a4146a41631ac11097a916d",
+          "target_physical_hex": "06C08C24",
+          "copy_call_linked_address_hex": "206984"
+        },
+        {
+          "name": "LowerELSynchronous32PatchHandler",
+          "silicon_platform": 8992,
+          "file_offset_hex": "19300",
+          "words": 21,
+          "sha256": "99b29fb58bc921c4b2d13b4555b572a4b810b3d9f5a8e950a6e3cc3a96595d6d",
+          "target_physical_hex": "06C08E24",
+          "copy_call_linked_address_hex": "2069A0"
+        }
+      ],
+      "msm8994_patch_array_matches": 0,
+      "copy_function_linked_address_hex": "204DC4",
+      "psci_hvc_call_linked_address_hex": "2069B8",
+      "psci_smc_call_linked_address_hex": "2069C4",
+      "hvc_instruction_file_offset_hex": "17B54",
+      "smc_instruction_file_offset_hex": "17B80",
+      "observation_limit": "The actual image contains the matching MSM8992 patch arrays and compiled copy/PSCI call sites. This does not read live EL2 memory, HCR_EL2, the hypervisor revision or an actual non-PSCI monitor return."
+    }
   },
   "handset_negotiated_convention_observed": false,
   "checkpoint_c_reset_cause_established": false,

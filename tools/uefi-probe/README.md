@@ -241,6 +241,54 @@ python3 scripts/check-oem-scm-profile.py --tree-driver /path/to/QcTrEE8994.sys \
 No Windows application, firmware GPU service, shader execution, DMA or FPS claim
 is added. The GPU-only path remains the established native hardware baseline.
 
+The subsequent V8 handset video confirms `ENTERING SCM32 OEM DISCOVERY` at
+`TRACE STEP 0000000C`, with function `02000601`, arginfo 1, argument `02000602`
+and entry count 1. The screen then goes black without a captured final-return
+marker. This precedes any observed convention negotiation or device-18 restore.
+The entry marker appears before the SMC instruction, and interrupted resumes
+have no extra screen: this is not proof of the exact reset instruction or of
+no monitor return whatsoever. The video does not capture a subsequent boot menu.
+See `docs/hardware/2026-10-27-native-gpu-v8-discovery-display-loss.json` for its
+hash, frame times and separation of visible facts from source-path inferences.
+V8 remains an unresolved secure-entry failure, not a successful reset fix.
+
+## Native interrupt runtime (v9)
+
+The current order is native GPU output, then physical touchscreen input, then
+iOS integration. V9 addresses a missing prerequisite at the secure-entry boundary;
+it is not a rendered-frame demo or a confirmed cure for the V8 display loss.
+The OEM function IDs, discovery/feature negotiation and shared entry budget are
+unchanged. GPU-only selection still performs no secure calls or SMMU inspection.
+
+Secure mode additionally verifies the live ACPI GTDT and the GIC/RPM interrupt
+page reservations, GCD descriptors and device identity translations before exit.
+The pinned Lumia firmware GTDT specifies virtual timer GSI **20**, not QEMU's 27;
+an incompatible live table is refused. There are no GIC or timer writes before
+`ExitBootServices` succeeds. Afterwards V9 installs a native nonsecure GICv2
+runtime, enables only SGI 0 and the timer PPI, and requires two asynchronous timer
+interrupts plus a real self-SGI before entering SCM. Configuration readback alone
+does not satisfy that proof. The periodic timer stays active through monitor
+entries/resumes; masked IRQs, a stale heartbeat, lost controller access or an
+unexpected interrupt revoke authorization. Protected SMMU global windows remain
+untouched.
+
+The actual EFI IRQ vector saves all GPRs and ELR/SPSR, including across a nested
+guarded MMIO abort inside an ISR. A failed ISR returns with CPU IRQs masked even
+if controller access has failed. A standalone A53/GICv2 QEMU image links that
+same assembly and the shared runtime. Secure-on tests include a synthetic EL2
+forwarder and EL3 unsupported-call stub: these are not Qualcomm firmware and do
+not establish handset SCM success. Separate negative tests refuse inaccessible
+GICC priority state before any monitor entry.
+
+After successful GPU initialization, checkpoint B starts the IRQ runtime, C
+confirms real timer/SGI delivery, D announces secure restore, and E is the first
+SCM32 OEM discovery-entry screen. That screen also shows timer/SGI counts and
+inherited post-exit GIC state. `GPU INITIALIZED - NATIVE IRQ BLOCKED` stops before
+SMC; the final screen retains IRQ result/counts. These diagnostics are CPU-drawn.
+No command DMA, shader frame, presentation FPS, touchscreen contact or iOS boot
+has been established for V9. Details are in
+`docs/hardware/2026-10-28-native-irq-runtime.json`.
+
 ## On the phone
 
 Use the already-installed Lumia950XLPkg ARM64 UEFI. The Windows Phone Developer Menu is

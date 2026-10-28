@@ -389,6 +389,7 @@ jobs:
             out/gicv2-validation/**
             build/gicv2-qemu/gicv2-test.elf
             build/gicv2-qemu/gicv2-test-blocked-pmr.elf
+            build/gicv2-qemu/native-runtime-*.elf
 
   # The chainload payload: UniXNU.efi, DarwinBoot.efi and unixnu.toml in the EFIESP layout.
   # Manual like the kernel job: it clones edk2 and builds BaseTools, which is minutes of

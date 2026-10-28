@@ -1,7 +1,9 @@
 # Firmware-native GPU and XNU bring-up
 
-The active target is the Lumia's own ARM64 firmware, then native XNU/iOS. The
-Windows demonstration is not a substitute and is not part of this boot tree.
+The active order is native GPU-generated visible frames, then physical touchscreen
+input, then XNU/iOS. The Windows demonstration is not a substitute and is not part
+of this boot tree. Existing experimental kernel artifacts are retained, not treated
+as the next milestone while native GPU output remains blocked.
 
 ## Three-entry firmware menu
 
@@ -267,6 +269,36 @@ Host models and EFI/QEMU checks do not establish a handset monitor return. The
 first discovery still crosses the previously unproven secure conduit: **v8 is
 not a confirmed reset fix and must not be described as GPU rendering or iOS**.
 
+The subsequent handset video `PXL_20261027_192449425.mp4` confirms the V8 header,
+secure-context mode and checkpoint `0000000C`, `ENTERING SCM32 OEM DISCOVERY`.
+The visible request is `A0=0x02000601`, `A1=1`, `A2=0x02000602`, `A3=0`, entry
+count 1. The last full-text frame is at 23.633622 seconds; by 23.667189 seconds
+the phone screen is black. No discovery-return heading, feature query, restore,
+context inspection, exception screen or subsequent boot menu is captured.
+The video and exact observations are bound by hash in
+`docs/hardware/2026-10-27-native-gpu-v8-discovery-display-loss.json`; private media
+is kept outside Git.
+
+Reaching C implies the preceding native GPU startup, register initialization and
+final supply recheck returned success in this source path. It does not imply a
+rendered frame. The entry marker is drawn and held for two seconds before the
+SMC instruction; interrupted returns also resume without drawing. Consequently
+the recording identifies the last visible boundary, not the exact failing
+instruction, a proven absence of every monitor return or a unique reset cause.
+The first secure conduit and its EL1/EL2 context remain unqualified. Changing a
+later restore width or bypassing SMMU protection is not justified by this result.
+No new boot image is installed merely to repeat the same observed failure.
+
+The following fresh read-only mass-storage retrieval verifies all eight installed
+V8 stage files and the original firmware/BootShim/BCD hashes. Report 16 confirms
+ACPI profile 2, the measured affinity-zero A53, device-identity GPU mappings and
+explicit secure-context selection; it still ends before firmware exit. The actual
+`UEFI.elf` contains the expected MSM8992 hypervisor patch arrays and their copy
+call sites, not the MSM8994 variants. This narrows the static firmware audit but
+does not qualify live EL2 patch memory or establish a non-PSCI monitor return.
+The image hash, array offsets and compiled call sites are recorded in the OEM
+transport audit. No phone files are changed by this retrieval.
+
 ### V7 reset-stage diagnostics
 
 The user reports v6 displaying brief blue text and immediately rebooting after
@@ -302,6 +334,27 @@ and [regulator definitions](https://github.com/torvalds/linux/blob/v6.12/drivers
 Controller layout and execution environment come from the installed firmware's
 [matching SPMI implementation](https://github.com/WOA-Project/Lumia950XLPkg/blob/0e7e24a/Driver/SpmiDxe/spmi.c)
 and memory map. Static source facts are not represented as live handset observations.
+
+## Native interrupt prerequisite (v9)
+
+The latest native GPU app adds a real nonsecure GICv2/timer interrupt runtime
+before the unchanged OEM SCM sequence. V8 left DAIF masked after exit; that is a
+missing runtime prerequisite, not an established explanation for its reset.
+The live GTDT must match the pinned Lumia virtual-timer GSI 20 and level-high
+profile, and GIC/RPM interrupt MMIO must pass reservation/GCD/identity checks.
+No interrupt-controller writes occur before firmware exit. Two delivered timer
+IRQs and one self-SGI, not programmed register values, qualify secure entry.
+Periodic rearm and controller/heartbeat checks remain active across all monitor
+calls. Unknown IRQs, inaccessible priority state or lost IRQ delivery stop the
+path. GPU-only mode remains free of SMC and SMMU reads.
+
+The EFI vector assembly is also exercised in a bare-metal A53/GICv2 QEMU test,
+including nested MMIO aborts inside an IRQ, timer rearm, synthetic EL2/EL3 monitor
+return and failed-ISR masking. Neither that synthetic monitor nor host MMIO models
+qualify Qualcomm firmware or the handset. The complete V9 image still needs a
+physical test; no reset fix, GPU-rendered frame, 60 FPS, touch input or iOS boot
+is claimed. See `tools/uefi-probe/README.md` and
+`docs/hardware/2026-10-28-native-irq-runtime.json` for checkpoints and evidence.
 
 ## Source-only XNU entry
 

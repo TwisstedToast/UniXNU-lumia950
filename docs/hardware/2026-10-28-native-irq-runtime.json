@@ -1,0 +1,71 @@
+{
+  "schema": "lumia950-native-irq-runtime-v1",
+  "date": "2026-10-28",
+  "user_priority": ["native GPU-generated visible output", "physical touchscreen input", "iOS integration"],
+  "motivation": {
+    "v8_leaves_daif_masked_after_firmware_exit": true,
+    "native_interrupt_runtime_was_missing_before_standard_scm_calls": true,
+    "this_is_the_established_cause_of_v8_display_loss": false,
+    "oem_scm_ids_convention_negotiation_and_entry_budget_changed": false
+  },
+  "primary_sources": [
+    "https://github.com/tianocore/edk2/blob/master/ArmPkg/Drivers/ArmGicDxe/GicV2/ArmGicV2Dxe.c",
+    "https://github.com/tianocore/edk2/blob/master/MdeModulePkg/Core/Dxe/DxeMain/DxeMain.c",
+    "https://github.com/torvalds/linux/blob/master/drivers/firmware/qcom/qcom_scm.c"
+  ],
+  "lumia_timer_profile": {
+    "source": "https://github.com/WOA-Project/Lumia950XLPkg/blob/0e7e24adb2ac80672ade1e56f9b538d99941328f/AcpiTables/common/src/GTDT.asl",
+    "source_sha256": "9901b33c4b3d2a1e7a8180ea5f36daa86fc82bb4ba2cfa00d924579403f9e3bf",
+    "virtual_timer_gsi": 20,
+    "source_flags": 0,
+    "live_acceptance": "Checksum-qualified GTDT with virtual timer GSI 20, level-high flags and optional always-on bit; reserved device-identity GIC/IPC MMIO",
+    "qemu_virtual_timer_gsi": 27,
+    "live_handset_gtdt_observed_for_v9": false
+  },
+  "runtime": {
+    "native_gicv2_nonsecure_view_required": true,
+    "gicd_address": "0xf9000000",
+    "gicc_address": "0xf9002000",
+    "interrupt_ipc_page": "0xf900d000",
+    "timer_period_microseconds": 10000,
+    "irq_proof_deadline_microseconds": 100000,
+    "required_timer_isr_count": 2,
+    "required_self_sgi_isr_count": 1,
+    "irq_and_timer_writes_before_firmware_exit": false,
+    "live_irq_heartbeat_and_controller_checks_before_and_after_every_scm_entry": true,
+    "unexpected_irq_or_guard_failure_revokes_entry": true,
+    "failed_isr_masks_irq_in_saved_spsr": true,
+    "gpu_only_mode_starts_irq_or_smc": false,
+    "protected_smmu_global_id_or_route_reads_added": false,
+    "v9_first_scm_entry_checkpoint": "0xE"
+  },
+  "validation": {
+    "host_models_are_not_handset_evidence": true,
+    "gic_core_host_checks_passed": 168,
+    "irq_runtime_host_checks_passed": 152,
+    "gpu_backend_host_checks_passed": 459,
+    "secure_smmu_host_model_checks_passed": 1162,
+    "gtdt_profile_checks_include_wrong_timer_flags_checksum_and_truncation": true,
+    "qemu_uses_actual_efi_vector_assembly_and_shared_runtime": true,
+    "qemu_positive_configurations": ["Cortex-A53 GICv2 secure-off", "Cortex-A53 GICv2 secure-on"],
+    "qemu_observed": [
+      "asynchronous virtual timer and self-SGI delivery",
+      "periodic timer rearm before and after guarded SMC",
+      "nested guarded MMIO abort inside each IRQ without corrupting ELR or SPSR",
+      "guarded MMIO read and write while native IRQ runtime is active",
+      "synthetic EL2 forwarding to an EL3 unsupported-call stub in secure-on mode",
+      "unexpected SPI returns from ISR with CPU IRQ masked"
+    ],
+    "qemu_negative_configuration": "Secure-owned GICC priority mask refuses runtime before monitor entry",
+    "synthetic_monitor_is_actual_qualcomm_firmware": false,
+    "handset_v9_execution_observed": false
+  },
+  "not_established": [
+    "fix for V8 secure-entry display loss or reported reboot",
+    "successful handset SCM return or SMMU context setup",
+    "GPU command DMA or shader execution",
+    "GPU-generated visible frame or measured presentation FPS",
+    "native physical touchscreen input",
+    "handset XNU or iOS userspace boot"
+  ]
+}

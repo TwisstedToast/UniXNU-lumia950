@@ -49,4 +49,14 @@ bool isLumia950Madt(const u8 *table, u32 bytes)
     return cpus == 0x3f && distributors == 1;
 }
 
+bool isLumia950Gtdt(const u8 *table, u32 bytes)
+{
+    if (!table || bytes < 80 || bytes > 65536 || read32(table) != 0x54445447 ||
+        read32(table + 4) != bytes || read32(table + 64) != kLumia950VirtualTimerInterrupt ||
+        (read32(table + 68) & ~4u)) return false;
+    u8 sum = 0;
+    for (u32 index = 0; index < bytes; ++index) sum = static_cast<u8>(sum + table[index]);
+    return sum == 0;
+}
+
 }

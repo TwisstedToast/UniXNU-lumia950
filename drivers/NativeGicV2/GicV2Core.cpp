@@ -4,7 +4,6 @@ namespace gicv2 {
 namespace {
 constexpr Space kDist = Space::Distributor;
 constexpr Space kCpu = Space::Cpu;
-constexpr u32 kLocalInterrupts = 1u | (1u << 27);
 
 bool equal(const u8 *bytes, u32 length, const char *name)
 {
@@ -76,7 +75,7 @@ bool Controller::configure(const RegisterIo &registers, u32 distributorBytes, u3
     return true;
 }
 
-bool Controller::prepareDistributor()
+bool Controller::prepareDistributor(bool requireNonSecure)
 {
     if (!bound) return fail(Error::NotConfigured);
     if (distributed) return fail(Error::InvalidArgument);
@@ -89,6 +88,7 @@ bool Controller::prepareDistributor()
         secure = ((read(kDist, 0x80) ^ original) & 1) != 0;
         write(kDist, 0x80, original);
     }
+    if (requireNonSecure && secure) return fail(Error::SecureAccess);
     u32 targets = 0;
     for (u32 offset = 0x800; offset < 0x820; offset += 4) targets |= read(kDist, offset);
     targets |= targets >> 16;
@@ -124,19 +124,21 @@ bool Controller::priority(u32 id, u8 value)
     return ((read(kDist, offset) >> shift) & 0xf8) == (value & 0xf8);
 }
 
-bool Controller::prepareLocal()
+bool Controller::prepareLocal(u32 timerInterrupt)
 {
     if (!distributed) return fail(Error::NotPrepared);
+    if (timerInterrupt < 16 || timerInterrupt > 31) return fail(Error::InvalidArgument);
     write(kDist, 0x180, 0xffffffffu);
     write(kDist, 0x280, 0xffff0000u);
     write(kDist, 0x380, 0xffffffffu);
     for (u32 offset = 0xf10; offset < 0xf20; offset += 4) write(kDist, offset, 0xffffffffu);
-    if (!group(0) || !group(27) || !priority(0, 0x80) || !priority(27, 0x80)) {
+    if (!group(0) || !group(timerInterrupt) || !priority(0, 0x80) || !priority(timerInterrupt, 0x80)) {
         return fail(Error::RegisterRejected);
     }
-    const u32 timerShift = (27u % 16) * 2;
+    const u32 timerShift = (timerInterrupt % 16) * 2;
     write(kDist, 0xc04, read(kDist, 0xc04) & ~(3u << timerShift));
     if (read(kDist, 0xc04) & (2u << timerShift)) return fail(Error::RegisterRejected);
+    localInterruptMask = 1u | (1u << timerInterrupt);
     local = true;
     return true;
 }
@@ -146,10 +148,10 @@ bool Controller::enableLocal()
     if (!local) return fail(Error::NotPrepared);
     write(kCpu, 4, 0xff);
     write(kCpu, 8, 0);
-    write(kDist, 0x100, kLocalInterrupts);
+    write(kDist, 0x100, localInterruptMask);
     write(kDist, 0, read(kDist, 0) | 1u);
     write(kCpu, 0, (read(kCpu, 0) & 0x1e0u) | 1u);
-    if ((read(kDist, 0x100) & kLocalInterrupts) != kLocalInterrupts ||
+    if ((read(kDist, 0x100) & localInterruptMask) != localInterruptMask ||
         !(read(kDist, 0) & 1) || (read(kCpu, 0) & 0x601) != 1 ||
         (read(kCpu, 4) & 0xf8) != 0xf8) return fail(Error::RegisterRejected);
     return true;

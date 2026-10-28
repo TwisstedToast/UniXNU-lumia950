@@ -47,7 +47,16 @@ for component in LumiaGpuProbe LumiaRpmHandoff ReportStore FirmwareClock Firmwar
     -fno-asynchronous-unwind-tables -fno-unwind-tables -Wall -Wextra -Werror \
     -I "$EDK2/MdePkg/Include" -I "$EDK2/MdePkg/Include/AArch64" \
     -I "$ROOT/tools/uefi-probe" -I "$ROOT/drivers/NativeAdreno418" \
+    -I "$ROOT/drivers/NativeGicV2" \
     -c "$ROOT/tools/uefi-probe/$component.cpp" -o "$OUT/objects/$component.obj"
+done
+
+for component in GicV2Core GicRuntimeCore; do
+  "$CLANG" --target=aarch64-pc-windows-msvc -std=c++17 -Os \
+    -ffreestanding -fno-builtin -fno-stack-protector -fshort-wchar \
+    -fno-exceptions -fno-rtti -mno-stack-arg-probe -mgeneral-regs-only -mstrict-align \
+    -fno-asynchronous-unwind-tables -fno-unwind-tables -Wall -Wextra -Werror \
+    -c "$ROOT/drivers/NativeGicV2/$component.cpp" -o "$OUT/objects/$component.obj"
 done
 
 "$CLANG" --target=aarch64-pc-windows-msvc -std=c++17 -Os \
@@ -57,6 +66,7 @@ done
   -DLUMIA_GPU_POWER_TEST=1 \
   -I "$EDK2/MdePkg/Include" -I "$EDK2/MdePkg/Include/AArch64" \
   -I "$ROOT/tools/uefi-probe" -I "$ROOT/drivers/NativeAdreno418" \
+  -I "$ROOT/drivers/NativeGicV2" \
   -c "$ROOT/tools/uefi-probe/LumiaRpmHandoff.cpp" -o "$OUT/objects/LumiaGpuPower.obj"
 "$CLANG" --target=aarch64-pc-windows-msvc -c "$ROOT/tools/uefi-probe/NativeMmio.S" \
   -o "$OUT/objects/NativeMmio.obj"
@@ -79,7 +89,7 @@ for application in LumiaProbe LumiaHandoff LumiaGpuProbe LumiaRpmHandoff LumiaGp
     application_objects+=("$OUT/objects/SmdMemory.obj" "$OUT/objects/SmdPipe.obj")
   fi
   if [ "$application" = LumiaGpuPower ]; then
-    for component in MemoryMove NativeMmio AdrenoCore GpuIo RpmCore RpmVotes PowerController SpmiCore PinnedGraphics A418Init SmmuRoutes SecureSmmu; do
+    for component in MemoryMove NativeMmio AdrenoCore GpuIo RpmCore RpmVotes PowerController SpmiCore PinnedGraphics A418Init SmmuRoutes SecureSmmu GicV2Core GicRuntimeCore; do
       application_objects+=("$OUT/objects/$component.obj")
     done
   fi

@@ -27,6 +27,8 @@ bool NativeGpuMappings(EFI_SYSTEM_TABLE *systemTable)
     return true;
 }
 
+#include "NativeGpuInterrupts.h"
+
 struct NativeGpuContext { bool gpuAccessible; };
 
 bool NativeGpuAddress(NativeGpuContext &context, RegisterSpace space, u32 offset, u64 &address)
@@ -74,6 +76,7 @@ bool NativeSpmiWrite(void *, u32 offset, u32 value)
 }
 
 struct NativeGpuResult {
+    NativeGpuInterrupts interrupts;
     spmi::Bus bus;
     pinned::Handoff handoff;
     rpm::Session session;
@@ -96,12 +99,12 @@ void NativeGpuProgress(const ProbeFramebuffer &framebuffer, const char *stage, u
     nativeGpuStage = stage;
     ++nativeGpuCheckpoint;
     const u32 color = ProbeFramebufferColor(framebuffer.pixel_format, 60, 170, 255);
-    ProbeFillRectangle(&framebuffer, 0, 0, framebuffer.width, 440, 0);
-    Line(framebuffer, 0, "GPU BRINGUP V8 - CPU STATUS ONLY", color);
+    ProbeFillRectangle(&framebuffer, 0, 0, framebuffer.width, 640, 0);
+    Line(framebuffer, 0, "GPU BRINGUP V9 - CPU STATUS ONLY", color);
     Line(framebuffer, 1, ProbeGpuModeName(nativeGpuMode), color);
     Line(framebuffer, 2, stage, color);
     Number(framebuffer, 3, "TRACE STEP", nativeGpuCheckpoint, color);
-    Flush(framebuffer, 0, 440);
+    Flush(framebuffer, 0, 640);
     if (pauseMicroseconds) { Delay(nullptr, pauseMicroseconds); }
 }
 
@@ -114,7 +117,7 @@ struct NativeScmTrace {
 
 bool NativeScmInvoke(void *opaque, secure::MonitorRegisters *values)
 {
-    if (!opaque || !values || !ProbeGpuAllowsSecure(nativeGpuMode)) { return false; }
+    if (!opaque || !values || !ProbeGpuAllowsSecure(nativeGpuMode) || !NativeGpuInterruptsReady()) { return false; }
     auto &trace = *static_cast<NativeScmTrace *>(opaque);
     const u64 function = values->values[0];
     const bool resuming = function == 1;
@@ -135,10 +138,18 @@ bool NativeScmInvoke(void *opaque, secure::MonitorRegisters *values)
         Number(framebuffer, 7, "SCM ARG ZERO", values->values[2], color);
         Number(framebuffer, 8, "SCM ARG ONE", values->values[3], color);
         Number(framebuffer, 9, "SCM ENTRY", trace.entries, color);
-        Flush(framebuffer, 0, 440);
+        Number(framebuffer, 10, "NATIVE TIMER IRQ", nativeInterruptContext->runtime.timerInterrupts(), color);
+        Number(framebuffer, 11, "NATIVE SGI IRQ", nativeInterruptContext->runtime.sgiInterrupts(), color);
+        Number(framebuffer, 12, "EBS GICD CTLR", nativeInterruptContext->inheritedDistributor, color);
+        Number(framebuffer, 13, "EBS GICC CTLR", nativeInterruptContext->inheritedCpu, color);
+        Number(framebuffer, 14, "EBS GICC PMR", nativeInterruptContext->inheritedPriorityMask, color);
+        Number(framebuffer, 15, "IRQ ENABLED", NativeIrqEnabled(nullptr), color);
+        Flush(framebuffer, 0, 640);
         Delay(nullptr, 2000000);
     }
+    if (!NativeGpuInterruptsReady()) { return false; }
     const bool returned = NativeGuardedScmCall(values);
+    if (!NativeGpuInterruptsReady()) { return false; }
     trace.resumePending = ProbeGpuScmResumePending(returned, values->values[0]);
     if (trace.resumePending) { return true; }
     NativeGpuProgress(framebuffer, !returned ? "SCM TRAP RECOVERED" :
@@ -155,6 +166,8 @@ bool NativeScmInvoke(void *opaque, secure::MonitorRegisters *values)
 
 [[noreturn]] void NativeGpuResultScreen(const ProbeFramebuffer &framebuffer, const NativeGpuResult &result)
 {
+    asm volatile("msr daifset, #15" ::: "memory");
+    if (nativeInterruptContext) nativeInterruptContext->runtime.stop();
     const auto &handoff = result.handoff;
     const bool passed = result.complete || result.baselineComplete;
     const u32 color = ProbeFramebufferColor(framebuffer.pixel_format,
@@ -166,7 +179,9 @@ bool NativeScmInvoke(void *opaque, secure::MonitorRegisters *values)
     ProbeFillRectangle(&framebuffer, 0, 0, framebuffer.width, framebuffer.height, 0);
     const char *heading = result.baselineComplete ? "GPU HARDWARE BASELINE OK - NO SMC" :
         result.complete ? "NATIVE GPU + SMMU CONTEXT ACCESS OK" :
-        result.hardwareResult == HardwareResult::Ok ? "GPU INITIALIZED - SMMU BLOCKED" : "NATIVE GPU ACTIVATION STOPPED";
+        result.hardwareResult == HardwareResult::Ok ?
+            result.interrupts.result != gicv2::RuntimeResult::Ok ? "GPU INITIALIZED - NATIVE IRQ BLOCKED" :
+                "GPU INITIALIZED - SMMU BLOCKED" : "NATIVE GPU ACTIVATION STOPPED";
     Line(framebuffer, 0, heading, color);
     Line(framebuffer, 1, "NO WINDOWS OR UEFI SERVICES", color);
     Line(framebuffer, 2, nativeGpuStage, color);
@@ -217,11 +232,11 @@ bool NativeScmInvoke(void *opaque, secure::MonitorRegisters *values)
     Number(framebuffer, 41, "ABORT ESR", native_mmio_esr, color);
     Number(framebuffer, 42, "ABORT FAR", native_mmio_far, color);
     Number(framebuffer, 43, "ABORT ELR", native_mmio_elr, color);
-    Number(framebuffer, 44, "QUALIFIED READS", handoff.rail.stableSamples, color);
-    Number(framebuffer, 45, "CLK REQ KHZ", pinned::kGraphicsKHz, color);
-    Number(framebuffer, 46, "RAIL READS", handoff.rail.samples, color);
-    Number(framebuffer, 47, "RAIL MIN UV", handoff.rail.minimumMicrovolts, color);
-    Number(framebuffer, 48, "RAIL MAX UV", handoff.rail.maximumMicrovolts, color);
+    Number(framebuffer, 44, "IRQ RESULT", static_cast<u32>(result.interrupts.result), color);
+    Number(framebuffer, 45, "NATIVE TIMER IRQ", result.interrupts.runtime.timerInterrupts(), color);
+    Number(framebuffer, 46, "NATIVE SGI IRQ", result.interrupts.runtime.sgiInterrupts(), color);
+    Number(framebuffer, 47, "UNEXPECTED IRQ", result.interrupts.runtime.unexpectedInterrupts(), color);
+    Number(framebuffer, 48, "LAST NATIVE IRQ", result.interrupts.runtime.lastInterrupt(), color);
     Number(framebuffer, 49, "SCM CONVENTION", static_cast<u32>(result.configuration.convention), color);
     Number(framebuffer, 50, "SCM FEATURE 10", result.configuration.featureVersion, color);
     Line(framebuffer, 51, "PINNED - NO SHADER/IOS - FORCE REBOOT", color);
@@ -287,6 +302,12 @@ bool NativeScmInvoke(void *opaque, secure::MonitorRegisters *values)
         NativeGpuResultScreen(framebuffer, result);
     }
     if (!ProbeGpuAllowsSecure(nativeGpuMode)) { NativeGpuResultScreen(framebuffer, result); }
+    NativeGpuProgress(framebuffer, "STARTING THE NATIVE INTERRUPT RUNTIME");
+    if (NativeGpuStartInterrupts(result.interrupts) != gicv2::RuntimeResult::Ok) {
+        nativeGpuStage = gicv2::runtimeResultName(result.interrupts.result);
+        NativeGpuResultScreen(framebuffer, result);
+    }
+    NativeGpuProgress(framebuffer, "NATIVE TIMER AND SGI IRQ VERIFIED");
     NativeGpuProgress(framebuffer, "RESTORING OEM SECURE SMMU POLICY");
     NativeScmTrace trace = {&framebuffer, 0, secure::Request::Invalid, false};
     const secure::MonitorIo monitor = {&trace, NativeScmInvoke};

@@ -47,7 +47,35 @@ def main():
             sys.stdout.buffer.write(result.stdout)
             raise SystemExit(f"{name}: IRQ validation failed ({result.returncode})")
         print(f"{name}: asynchronous virtual timer, SGI, SPI, rearm and EOIR passed")
-    print("QEMU core validation only; the XNU/IOKit wrapper and Lumia hardware are unverified.")
+    for secure, blocked in ((False, False), (True, False), (True, True)):
+        name = "native-runtime-" + ("secure-on" if secure else "secure-off") + ("-blocked-pmr" if blocked else "")
+        image = args.image.with_name("native-runtime-" + ("blocked-pmr" if blocked else "normal") + ".elf")
+        if not image.is_file():
+            parser.error("build-gicv2-test.sh must also produce the native runtime images")
+        command = [args.qemu, "-M", "virt,gic-version=2,virtualization=on,secure=" + ("on" if secure else "off"),
+                   "-cpu", "cortex-a53", "-accel", "tcg", "-m", "128M", "-smp", "2",
+                   "-nographic", "-monitor", "none", "-nic", "none", "-no-reboot",
+                   "-semihosting-config", "enable=on,target=native", "-kernel", str(image.resolve())]
+        try:
+            result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=15, check=False)
+        except subprocess.TimeoutExpired as error:
+            (args.output / (name + ".log")).write_bytes(error.stdout or b"")
+            raise SystemExit(f"{name}: native-vector/runtime timeout; see {args.output}") from error
+        (args.output / (name + ".log")).write_bytes(result.stdout)
+        if blocked:
+            if result.returncode != 1 or b"FAIL GICC enable" not in result.stdout or b"PASS" in result.stdout:
+                sys.stdout.buffer.write(result.stdout)
+                raise SystemExit("native IRQ runtime accepted a blocked secure priority mask")
+            print(f"{name}: blocked GICC is refused before any monitor entry")
+            continue
+        expected = [b"PASS NATIVE IRQ RUNTIME TIMER_REARM SGI NESTED_ABORT SCM_GUARD MMIO_GUARD ISR_ERROR_MASK"]
+        expected.append(b"SYNTHETIC MONITOR UNSUPPORTED - EL2 FORWARDING TESTED - NOT HANDSET SCM" if secure else
+                        b"NO EL3 - NATIVE SCM GUARD")
+        if result.returncode or b"FAIL" in result.stdout or not all(marker in result.stdout for marker in expected):
+            sys.stdout.buffer.write(result.stdout)
+            raise SystemExit(f"{name}: native vector/runtime validation failed ({result.returncode})")
+        print(f"{name}: actual EFI vector assembly, timer/SGI IRQs, nested abort and SCM guard passed")
+    print("QEMU runtime validation only; the synthetic monitor is not Qualcomm firmware or Lumia hardware.")
 
 
 if __name__ == "__main__":
