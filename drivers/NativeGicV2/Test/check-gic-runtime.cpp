@@ -35,6 +35,7 @@ struct FakeRuntime {
     bool rejectPmr = false;
     bool secure = false;
     bool repeat = false;
+    u32 priorityBits = 0xff;
 
     FakeRuntime()
     {
@@ -66,7 +67,7 @@ struct FakeRuntime {
         auto &fake = *static_cast<FakeRuntime *>(opaque);
         ++fake.writes;
         if (space == Space::Cpu) {
-            fake.cpu[offset / 4] = value;
+            fake.cpu[offset / 4] = offset == 4 ? value & fake.priorityBits : value;
             if (offset == 16) fake.ended.push_back(value);
             return;
         }
@@ -74,7 +75,8 @@ struct FakeRuntime {
         if (offset >= 0x800 && offset < 0x820) return;
         if (offset >= 0x100 && offset < 0x180) fake.distributor[offset / 4] |= value;
         else if (offset >= 0x180 && offset < 0x200) fake.distributor[(offset - 0x80) / 4] &= ~value;
-        else fake.distributor[offset / 4] = value;
+        else fake.distributor[offset / 4] = offset >= 0x400 && offset < 0x800 ?
+            value & (fake.priorityBits * 0x01010101u) : value;
     }
 
     static void barrier(void *) {}
@@ -269,6 +271,21 @@ void testLiveController()
     wrapped.now += 1920001;
     expect(runtime.poll() == RuntimeResult::IrqMissing, "stale heartbeat still expires across counter wrap");
 }
+
+void testPriorityPrecision()
+{
+    for (u32 bits : {0xf0u, 0xf8u, 0xfcu, 0xfeu, 0xffu}) {
+        FakeRuntime fake;
+        fake.priorityBits = bits;
+        Runtime runtime;
+        proof(fake, runtime);
+        expect(runtime.ready() && runtime.controller().priorityMaskBits() == bits,
+            "IRQ delivery proof remains required for every implemented priority precision");
+        fake.cpu[1] = 0;
+        expect(runtime.poll() == RuntimeResult::IrqMissing,
+            "losing PMR access revokes qualification even with four-bit priorities");
+    }
+}
 }
 
 int main()
@@ -279,6 +296,7 @@ int main()
     testInterruptErrors();
     testLumiaTimer();
     testLiveController();
+    testPriorityPrecision();
     std::printf("GicRuntimeCore: %u checks, %u failures (simulated IRQ delivery, not hardware)\n", checks, failures);
     return failures ? 1 : 0;
 }

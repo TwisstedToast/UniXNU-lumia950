@@ -147,7 +147,12 @@ extern "C" [[noreturn]] void gic_test_main()
         hex(controller.read(Space::Cpu, 0));
         fail("distributor");
     }
-    if (!controller.prepareLocal()) fail("banked local interrupts");
+    if (!controller.prepareLocal()) {
+        const auto failure = controller.failure();
+        if (failure.check != Check::None && failure.space == Space::Cpu && failure.offset == 4 &&
+            failure.observed == 0) fail("GICC priority access");
+        fail("banked local interrupts");
+    }
     if (!controller.enableLocal()) {
         print(" ENABLE CTLR/DIST/LOCAL/PMR ");
         hex(controller.read(Space::Cpu, 0));
@@ -157,6 +162,10 @@ extern "C" [[noreturn]] void gic_test_main()
         fail("GICC enable");
     }
     const bool security = (read(nullptr, Space::Distributor, 4) & (1u << 10)) != 0;
+    print("MEASURED PRIORITY BITS DIST/CPU ");
+    hex(controller.priorityBits());
+    hex(controller.priorityMaskBits());
+    print("\n");
     print(security ? "SECURITY EXTENSIONS ON\n" : "SECURITY EXTENSIONS OFF\n");
     if (security && !controller.secureView()) {
         if (controller.configureSpi(41, true)) fail("secure-owned SPI accepted");

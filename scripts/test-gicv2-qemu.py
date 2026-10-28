@@ -19,10 +19,13 @@ def main():
     blocked_image = args.image.with_name("gicv2-test-blocked-pmr.elf")
     if not blocked_image.is_file():
         parser.error("build-gicv2-test.sh must also produce the blocked-PMR negative test")
-    for secure, blocked in ((False, False), (True, False), (True, True)):
-        name = ("secure-on" if secure else "secure-off") + ("-blocked-pmr" if blocked else "")
+    configurations = [(secure, blocked, bits) for bits in (5, 6, 7, 8)
+                      for secure, blocked in ((False, False), (True, False), (True, True))]
+    for secure, blocked, bits in configurations:
+        name = ("secure-on" if secure else "secure-off") + ("-blocked-pmr" if blocked else "") + f"-priority{bits}"
         image = blocked_image if blocked else args.image
         command = [args.qemu, "-M", "virt,gic-version=2,virtualization=on,secure=" + ("on" if secure else "off"),
+                   "-global", f"arm_gic.num-priority-bits={bits}",
                    "-cpu", "cortex-a53", "-accel", "tcg", "-m", "128M", "-smp", "2",
                    "-nographic", "-monitor", "none", "-nic", "none", "-no-reboot",
                    "-semihosting-config", "enable=on,target=native", "-kernel", str(image.resolve())]
@@ -34,7 +37,7 @@ def main():
             raise SystemExit(f"{name}: QEMU timeout; see {args.output}") from error
         (args.output / (name + ".log")).write_bytes(result.stdout)
         if blocked:
-            if result.returncode != 1 or b"FAIL GICC enable" not in result.stdout or b"PASS" in result.stdout:
+            if result.returncode != 1 or b"FAIL GICC priority access" not in result.stdout or b"PASS" in result.stdout:
                 sys.stdout.buffer.write(result.stdout)
                 raise SystemExit("blocked secure PMR was not refused")
             print(f"{name}: inaccessible secure-owned priority mask is refused")
@@ -47,12 +50,13 @@ def main():
             sys.stdout.buffer.write(result.stdout)
             raise SystemExit(f"{name}: IRQ validation failed ({result.returncode})")
         print(f"{name}: asynchronous virtual timer, SGI, SPI, rearm and EOIR passed")
-    for secure, blocked in ((False, False), (True, False), (True, True)):
-        name = "native-runtime-" + ("secure-on" if secure else "secure-off") + ("-blocked-pmr" if blocked else "")
+    for secure, blocked, bits in configurations:
+        name = "native-runtime-" + ("secure-on" if secure else "secure-off") + ("-blocked-pmr" if blocked else "") + f"-priority{bits}"
         image = args.image.with_name("native-runtime-" + ("blocked-pmr" if blocked else "normal") + ".elf")
         if not image.is_file():
             parser.error("build-gicv2-test.sh must also produce the native runtime images")
         command = [args.qemu, "-M", "virt,gic-version=2,virtualization=on,secure=" + ("on" if secure else "off"),
+                   "-global", f"arm_gic.num-priority-bits={bits}",
                    "-cpu", "cortex-a53", "-accel", "tcg", "-m", "128M", "-smp", "2",
                    "-nographic", "-monitor", "none", "-nic", "none", "-no-reboot",
                    "-semihosting-config", "enable=on,target=native", "-kernel", str(image.resolve())]
@@ -63,7 +67,7 @@ def main():
             raise SystemExit(f"{name}: native-vector/runtime timeout; see {args.output}") from error
         (args.output / (name + ".log")).write_bytes(result.stdout)
         if blocked:
-            if result.returncode != 1 or b"FAIL GICC enable" not in result.stdout or b"PASS" in result.stdout:
+            if result.returncode != 1 or b"FAIL GICC priority access" not in result.stdout or b"PASS" in result.stdout:
                 sys.stdout.buffer.write(result.stdout)
                 raise SystemExit("native IRQ runtime accepted a blocked secure priority mask")
             print(f"{name}: blocked GICC is refused before any monitor entry")

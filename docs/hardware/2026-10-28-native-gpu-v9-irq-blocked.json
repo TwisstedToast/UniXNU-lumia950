@@ -1,0 +1,76 @@
+{
+  "schema": "lumia950-native-gpu-v9-irq-blocked-v1",
+  "date": "2026-10-28",
+  "source_commit": "a21e69c74fad57304073f954a2340d5e6c686eac",
+  "installed_gpu_sha256": "abd2c095f80f979ee1080146ae618728e46af52d4648b23d37ac4105a3569b23",
+  "photo": {
+    "filename": "PXL_20261028_133335573.jpg",
+    "bytes": 2138760,
+    "sha256": "c2185f633ecf681785c1dd1a4c1a95cc485e04c4f12c225d9e13287ee03376b2",
+    "private_media_not_committed": true
+  },
+  "visible": {
+    "heading": "GPU INITIALIZED - NATIVE IRQ BLOCKED",
+    "stage": "GIC CONFIGURATION REJECTED",
+    "hardware_init": "0x00000000",
+    "gpu_version": "0x00000051",
+    "gpu_configuration": "0x0229249a",
+    "irq_result": "0x00000005",
+    "native_timer_irq": "0x00000000",
+    "native_sgi_irq": "0x00000000",
+    "unexpected_irq": "0x00000000",
+    "last_native_irq": "0x000003ff",
+    "abort_esr": "0x00000000",
+    "abort_far": "0x00000000",
+    "abort_elr": "0x00000000",
+    "scm_convention": "0x00000000"
+  },
+  "readback": {
+    "fresh_read_only_mount": true,
+    "all_eight_v9_stage_files_identical": true,
+    "usb_flag_preserved": true,
+    "whole_phone_unmounted_after_retrieval": true,
+    "preflight_report": "gpu-report-17.txt",
+    "preflight_bytes": 3379,
+    "preflight_sha256": "f82edfb9751de6a0bc5b9145901a75dfe6ac4c51e2c184bb5dce298d107ed08c",
+    "preflight_mode": "GPU_AND_SECURE_CONTEXTS",
+    "live_virtual_timer_gsi": 20,
+    "live_virtual_timer_flags": 0,
+    "preflight_native_irq_mappings": "DEVICE_IDENTITY",
+    "preflight_irq_writes_before_exit": "NONE",
+    "report_contains_post_exit_gic_failure_register": false
+  },
+  "source_path_interpretation": {
+    "irq_result_5_means_controller_rejected": true,
+    "not_an_irq_delivery_timeout_result": true,
+    "native_gpu_initialization_preceded_rejection": true,
+    "native_scm_callback_was_not_reached": true,
+    "exact_failing_gic_register_known_from_this_photo": false,
+    "pmr_secure_ownership_established": false,
+    "four_bit_priority_precision_established_on_handset": false
+  },
+  "reproduced_source_bug": {
+    "old_check": "(GICC_PMR & 0xf8) == 0xf8",
+    "valid_nonsecure_readback_rejected": "0xf0",
+    "host_regression_failures_before_fix": 3,
+    "actual_qemu_reproduction": "Original V9 GIC ELF on Cortex-A53, GICv2 secure-on, arm_gic.num-priority-bits=5",
+    "original_v9_gic_elf_sha256": "1914b180fa90ec16f4151ce4e452aa6f43dbf81b92d1f4de5f9005d8d2c33fd6",
+    "qemu_observed_cpu_ctlr": "0x1",
+    "qemu_observed_distributor_ctlr": "0x1",
+    "qemu_observed_pmr": "0xf0",
+    "qemu_final_result": "FAIL GICC enable",
+    "this_proves_the_handset_has_the_same_exact_rejection": false
+  },
+  "v10_validation": {
+    "gic_core_host_checks_passed": 222,
+    "irq_runtime_host_checks_passed": 192,
+    "actual_qemu_configurations_passed": 24,
+    "physical_priority_bits_tested": [5, 6, 7, 8],
+    "nonsecure_four_bit_priority_view_included": true,
+    "secure_owned_zero_pmr_still_refused_before_monitor_entry": true,
+    "constant_plausible_pmr_and_invalid_priority_masks_still_refused": true,
+    "new_handset_result_observed": false
+  },
+  "primary_reference": "https://support.arm.com/documentation/ihi0048/b/Interrupt-Handling-and-Prioritization/Interrupt-grouping-and-interrupt-prioritization",
+  "not_established": ["handset IRQ delivery", "handset secure call success", "GPU DMA or shader frame", "60 FPS", "physical touch", "iOS boot"]
+}

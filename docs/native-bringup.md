@@ -356,6 +356,25 @@ physical test; no reset fix, GPU-rendered frame, 60 FPS, touch input or iOS boot
 is claimed. See `tools/uefi-probe/README.md` and
 `docs/hardware/2026-10-28-native-irq-runtime.json` for checkpoints and evidence.
 
+### V9 handset rejection and V10 correction
+
+V9 returned `GIC CONFIGURATION REJECTED`, IRQ result 5, with no delivered IRQs.
+Recovered report 17 confirms the actual GTDT GSI 20 and qualified native mappings;
+it contains no post-exit register result. Investigation then reproduced a V9
+precision bug: `PMR=0xf0` is valid for a four-bit nonsecure priority view but was
+rejected by the hardcoded five-bit mask. The original V9 ELF reproduces this in
+a secure-on, five-physical-priority-bit GICv2 QEMU run. The photo alone does not
+prove that this is the handset's exact failing register.
+
+V10 discovers distributor/CPU precision with writable-pattern readback and uses
+that precision consistently, retaining refusal of zero/stuck/inaccessible masks.
+Its exact register/expectation/observation diagnostics survive quiesce. Twenty-four
+real asynchronous QEMU configurations exercise the actual core/vector assembly
+across physical priority widths 5..8 and secure/blocked views. These are emulator
+results, not yet handset IRQ delivery, GPU DMA or rendering. The secure-call ABI,
+resource policy, GTDT route and GPU-only mode are unchanged. Evidence is in
+`hardware/2026-10-28-native-gpu-v9-irq-blocked.json`.
+
 ## Source-only XNU entry
 
 The previously merged 56 MB kernel is explicitly runtime/ABI/relocation-unqualified.

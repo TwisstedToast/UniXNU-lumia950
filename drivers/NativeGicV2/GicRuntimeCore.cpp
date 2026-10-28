@@ -57,7 +57,7 @@ bool Runtime::ready() const
         timer.counter(timer.context) - observed <= proofBudget &&
         (interruptController.read(Space::Distributor, 0) & 1) &&
         (interruptController.read(Space::Cpu, 0) & 0x601) == 1 &&
-        (interruptController.read(Space::Cpu, 4) & 0xf8) == 0xf8 &&
+        interruptController.priorityMaskEnabled() &&
         stage == RuntimeState::Ready && outcome == RuntimeResult::Ok;
 }
 
@@ -71,7 +71,7 @@ RuntimeResult Runtime::poll()
     if (!timer.cpuIrqEnabled(timer.context) ||
         !(interruptController.read(Space::Distributor, 0) & 1) ||
         (interruptController.read(Space::Cpu, 0) & 0x601) != 1 ||
-        (interruptController.read(Space::Cpu, 4) & 0xf8) != 0xf8) {
+        !interruptController.priorityMaskEnabled()) {
         return fail(RuntimeResult::ControllerRejected);
     }
     outcome = RuntimeResult::Ok;

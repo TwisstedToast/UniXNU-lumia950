@@ -48,6 +48,7 @@ public:
     u32 unexpectedInterrupts() const { return unexpected; }
     u32 lastInterrupt() const { return last; }
     Controller &controller() { return interruptController; }
+    const Controller &controller() const { return interruptController; }
 
 private:
     RuntimeResult fail(RuntimeResult result);

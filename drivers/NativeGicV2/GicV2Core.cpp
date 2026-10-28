@@ -41,7 +41,44 @@ u32 interruptId(u32 acknowledge)
 bool Controller::fail(Error error)
 {
     lastError = error;
+    registerFailure = {};
     return false;
+}
+
+bool Controller::verify(Space space, u32 offset, u32 expected, u32 mask)
+{
+    const u32 observed = read(space, offset);
+    if ((observed & mask) == expected) return true;
+    fail(Error::RegisterRejected);
+    registerFailure = {Check::Readback, space, offset, expected, observed, mask};
+    return false;
+}
+
+bool Controller::probePriority(Space space, u32 offset, u32 shift, u32 &bits)
+{
+    const u32 mask = 0xffu << shift;
+    const u32 neighbors = read(space, offset) & ~mask;
+    write(space, offset, neighbors | mask);
+    const u32 observed = read(space, offset);
+    const u32 implemented = (observed >> shift) & 0xff;
+    const u32 minimum = securityExtensions && secure ? 0xf8u : 0xf0u;
+    if (implemented < minimum || (implemented | (implemented - 1)) != 0xffu) {
+        fail(Error::RegisterRejected);
+        registerFailure = {Check::PriorityPrecision, space, offset, minimum << shift, observed, mask};
+        return false;
+    }
+    const u32 patterns[] = {0x50, 0xa0, 0xff};
+    for (u32 pattern : patterns) {
+        write(space, offset, neighbors | (pattern << shift));
+        if (!verify(space, offset, (pattern & implemented) << shift, mask)) return false;
+    }
+    bits = implemented;
+    return true;
+}
+
+bool Controller::priorityMaskEnabled() const
+{
+    return cpuPriorityBits && read(kCpu, 4) == cpuPriorityBits;
 }
 
 u32 Controller::read(Space space, u32 offset) const
@@ -65,7 +102,7 @@ bool Controller::configure(const RegisterIo &registers, u32 distributorBytes, u3
     io = registers;
     distBytes = distributorBytes;
     interfaceBytes = cpuBytes;
-    if (((read(kDist, 0xfe8) >> 4) & 15) != 2) return fail(Error::WrongArchitecture);
+    if (!verify(kDist, 0xfe8, 0x20, 0xf0)) { lastError = Error::WrongArchitecture; return false; }
     const u32 typer = read(kDist, 4);
     interrupts = ((typer & 31) + 1) * 32;
     securityExtensions = (typer & (1u << 10)) != 0;
@@ -81,7 +118,7 @@ bool Controller::prepareDistributor(bool requireNonSecure)
     if (distributed) return fail(Error::InvalidArgument);
     write(kCpu, 0, read(kCpu, 0) & ~3u);
     write(kDist, 0, read(kDist, 0) & ~3u);
-    if ((read(kDist, 0) & 3) || (read(kCpu, 0) & 3)) return fail(Error::RegisterRejected);
+    if (!verify(kDist, 0, 0, 3) || !verify(kCpu, 0, 0, 3)) return false;
     if (securityExtensions) {
         const u32 original = read(kDist, 0x80);
         write(kDist, 0x80, original ^ 1u);
@@ -112,7 +149,7 @@ bool Controller::group(u32 id)
     const u32 mask = 1u << (id % 32);
     const u32 before = read(kDist, offset);
     write(kDist, offset, secure ? before & ~mask : before | mask);
-    return !secure || !(read(kDist, offset) & mask);
+    return !secure || verify(kDist, offset, 0, mask);
 }
 
 bool Controller::priority(u32 id, u8 value)
@@ -121,7 +158,7 @@ bool Controller::priority(u32 id, u8 value)
     const u32 shift = (id & 3) * 8;
     const u32 before = read(kDist, offset);
     write(kDist, offset, (before & ~(0xffu << shift)) | (static_cast<u32>(value) << shift));
-    return ((read(kDist, offset) >> shift) & 0xf8) == (value & 0xf8);
+    return verify(kDist, offset, (static_cast<u32>(value) & interruptPriorityBits) << shift, 0xffu << shift);
 }
 
 bool Controller::prepareLocal(u32 timerInterrupt)
@@ -132,12 +169,13 @@ bool Controller::prepareLocal(u32 timerInterrupt)
     write(kDist, 0x280, 0xffff0000u);
     write(kDist, 0x380, 0xffffffffu);
     for (u32 offset = 0xf10; offset < 0xf20; offset += 4) write(kDist, offset, 0xffffffffu);
-    if (!group(0) || !group(timerInterrupt) || !priority(0, 0x80) || !priority(timerInterrupt, 0x80)) {
-        return fail(Error::RegisterRejected);
-    }
+    if (!group(0) || !group(timerInterrupt) ||
+        !probePriority(kDist, 0x400, 0, interruptPriorityBits) ||
+        !probePriority(kCpu, 4, 0, cpuPriorityBits) ||
+        !priority(0, 0x80) || !priority(timerInterrupt, 0x80)) return false;
     const u32 timerShift = (timerInterrupt % 16) * 2;
     write(kDist, 0xc04, read(kDist, 0xc04) & ~(3u << timerShift));
-    if (read(kDist, 0xc04) & (2u << timerShift)) return fail(Error::RegisterRejected);
+    if (!verify(kDist, 0xc04, 0, 2u << timerShift)) return false;
     localInterruptMask = 1u | (1u << timerInterrupt);
     local = true;
     return true;
@@ -151,9 +189,9 @@ bool Controller::enableLocal()
     write(kDist, 0x100, localInterruptMask);
     write(kDist, 0, read(kDist, 0) | 1u);
     write(kCpu, 0, (read(kCpu, 0) & 0x1e0u) | 1u);
-    if ((read(kDist, 0x100) & localInterruptMask) != localInterruptMask ||
-        !(read(kDist, 0) & 1) || (read(kCpu, 0) & 0x601) != 1 ||
-        (read(kCpu, 4) & 0xf8) != 0xf8) return fail(Error::RegisterRejected);
+    if (!verify(kDist, 0x100, localInterruptMask, localInterruptMask) ||
+        !verify(kDist, 0, 1, 1) || !verify(kCpu, 0, 1, 0x601) ||
+        !verify(kCpu, 4, cpuPriorityBits)) return false;
     return true;
 }
 
@@ -164,22 +202,22 @@ void Controller::disableLocal()
 
 bool Controller::configureSpi(u32 id, bool edge, u8 value)
 {
-    if (!distributed) return fail(Error::NotPrepared);
-    if (id < 32 || id >= interrupts || (value & 0xf8) == 0xf8) return fail(Error::InvalidArgument);
+    if (!distributed || !interruptPriorityBits || !cpuPriorityBits) return fail(Error::NotPrepared);
+    if (id < 32 || id >= interrupts || (static_cast<u32>(value) & interruptPriorityBits) >= cpuPriorityBits) {
+        return fail(Error::InvalidArgument);
+    }
     mask(id);
-    if (!group(id) || !priority(id, value)) return fail(Error::RegisterRejected);
+    if (!group(id) || !priority(id, value)) return false;
     const u32 targetOffset = 0x800 + (id & ~3u);
     const u32 targetShift = (id & 3) * 8;
     write(kDist, targetOffset, (read(kDist, targetOffset) & ~(0xffu << targetShift)) |
                                (static_cast<u32>(target) << targetShift));
-    if (((read(kDist, targetOffset) >> targetShift) & 0xff) != target) return fail(Error::RegisterRejected);
+    if (!verify(kDist, targetOffset, static_cast<u32>(target) << targetShift, 0xffu << targetShift)) return false;
     const u32 configOffset = 0xc00 + (id / 16) * 4;
     const u32 configShift = (id % 16) * 2;
     write(kDist, configOffset, (read(kDist, configOffset) & ~(3u << configShift)) |
                                ((edge ? 2u : 0u) << configShift));
-    if (((read(kDist, configOffset) >> configShift) & 2) != (edge ? 2u : 0u)) {
-        return fail(Error::RegisterRejected);
-    }
+    if (!verify(kDist, configOffset, (edge ? 2u : 0u) << configShift, 2u << configShift)) return false;
     const u32 mask = 1u << (id % 32), offset = (id / 32) * 4;
     write(kDist, 0x280 + offset, mask);
     write(kDist, 0x380 + offset, mask);
@@ -192,8 +230,7 @@ bool Controller::enable(u32 id)
     if (id >= interrupts) return fail(Error::InvalidArgument);
     const u32 offset = (id / 32) * 4, mask = 1u << (id % 32);
     write(kDist, 0x100 + offset, mask);
-    if (!(read(kDist, 0x100 + offset) & mask)) return fail(Error::RegisterRejected);
-    return true;
+    return verify(kDist, 0x100 + offset, mask, mask);
 }
 
 bool Controller::mask(u32 id)

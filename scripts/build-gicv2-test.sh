@@ -6,7 +6,7 @@ CC=${CC:-clang}
 CXX=${CXX:-clang++}
 LD=${LD:-ld.lld}
 mkdir -p "$OUT"
-flags=(-target aarch64-none-elf -mcpu=cortex-a53 -mgeneral-regs-only -ffreestanding
+flags=(-target aarch64-none-elf -mcpu=cortex-a53 -mgeneral-regs-only -mstrict-align -ffreestanding
        -fno-builtin -fno-stack-protector -O2 -g -Wall -Wextra -Werror)
 "$CC" "${flags[@]}" -c "$ROOT/tools/gicv2-qemu/entry.S" -o "$OUT/entry.o"
 "$CXX" "${flags[@]}" -std=c++17 -fno-exceptions -fno-rtti \

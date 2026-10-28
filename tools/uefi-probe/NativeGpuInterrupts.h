@@ -4,6 +4,22 @@ const MemoryRegion nativeRuntimeRegions[] = {
     {0xf900d000, 0xf900d000, 0x1000}
 };
 
+struct NativeInterruptRegister { gicv2::Space space; u32 offset; const char *label; };
+const NativeInterruptRegister nativeInterruptRegisters[] = {
+    {gicv2::Space::Distributor, 0, "NOW DIST CTLR"},
+    {gicv2::Space::Cpu, 0, "NOW CPU CTLR"},
+    {gicv2::Space::Cpu, 4, "NOW CPU PMR"},
+    {gicv2::Space::Distributor, 0xfe8, "DIST PIDR2"},
+    {gicv2::Space::Distributor, 4, "DIST TYPER"},
+    {gicv2::Space::Distributor, 0x100, "LOCAL ENABLE"},
+    {gicv2::Space::Distributor, 0x200, "LOCAL PENDING"},
+    {gicv2::Space::Distributor, 0x80, "LOCAL GROUP"},
+    {gicv2::Space::Distributor, 0x400, "SGI PRIORITIES"},
+    {gicv2::Space::Distributor, 0x414, "TIMER PRIORITY"},
+    {gicv2::Space::Distributor, 0x800, "CPU TARGET"}
+};
+constexpr u32 nativeInterruptRegisterCount = sizeof(nativeInterruptRegisters) / sizeof(nativeInterruptRegisters[0]);
+
 struct NativeGpuInterrupts {
     gicv2::Runtime runtime;
     volatile gicv2::RuntimeResult result = gicv2::RuntimeResult::NotReady;
@@ -11,6 +27,8 @@ struct NativeGpuInterrupts {
     u32 inheritedCpu = 0;
     u32 inheritedPriorityMask = 0;
     volatile bool mmioFault = false;
+    u32 snapshot[nativeInterruptRegisterCount] = {};
+    u32 monitorEntries = 0;
 };
 
 NativeGpuInterrupts *nativeInterruptContext;
@@ -61,9 +79,18 @@ u32 NativeIrqRead(void *opaque, gicv2::Space space, u32 offset)
 void NativeIrqWrite(void *opaque, gicv2::Space space, u32 offset, u32 value)
 {
     auto &context = *static_cast<NativeGpuInterrupts *>(opaque);
+    if (context.mmioFault) return;
     const u64 base = space == gicv2::Space::Distributor ? 0xf9000000ull : 0xf9002000ull;
     if (offset >= 0x1000 || (offset & 3) || !NativeWrite(nullptr, base + offset, value)) {
         context.mmioFault = true;
+    }
+}
+
+void NativeGpuCaptureInterrupts(NativeGpuInterrupts &context)
+{
+    for (u32 index = 0; index < nativeInterruptRegisterCount; ++index) {
+        const auto &item = nativeInterruptRegisters[index];
+        context.snapshot[index] = NativeIrqRead(&context, item.space, item.offset);
     }
 }
 

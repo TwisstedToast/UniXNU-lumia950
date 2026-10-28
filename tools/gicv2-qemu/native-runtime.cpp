@@ -135,7 +135,14 @@ extern "C" [[noreturn]] void gic_test_main()
     const RuntimeClock clock = {nullptr, counter, arm, stop, setEnabled, enabled};
     const RuntimeContract policy = {true, true, true, true, 27, frequency, 10000, 100000};
     RuntimeResult result = runtime.begin(registers, clock, policy);
-    if (result == RuntimeResult::ControllerRejected) fail("GICC enable");
+    if (result == RuntimeResult::ControllerRejected) {
+        const auto failure = runtime.controller().failure();
+        if (failure.check != Check::None && failure.space == Space::Cpu && failure.offset == 4 &&
+            failure.observed == 0 && !native_monitor_stub_calls && !native_el2_smc_traps) {
+            fail("GICC priority access");
+        }
+        fail("GIC runtime configuration");
+    }
     for (u32 polls = 0; result == RuntimeResult::Pending && polls < 10000000; ++polls) {
         result = runtime.poll();
         asm volatile("yield" ::: "memory");

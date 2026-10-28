@@ -20,7 +20,9 @@
     "source_flags": 0,
     "live_acceptance": "Checksum-qualified GTDT with virtual timer GSI 20, level-high flags and optional always-on bit; reserved device-identity GIC/IPC MMIO",
     "qemu_virtual_timer_gsi": 27,
-    "live_handset_gtdt_observed_for_v9": false
+    "live_handset_gtdt_observed_for_v9": true,
+    "saved_handset_preflight": "gpu-report-17.txt",
+    "saved_handset_preflight_sha256": "f82edfb9751de6a0bc5b9145901a75dfe6ac4c51e2c184bb5dce298d107ed08c"
   },
   "runtime": {
     "native_gicv2_nonsecure_view_required": true,
@@ -58,7 +60,9 @@
     ],
     "qemu_negative_configuration": "Secure-owned GICC priority mask refuses runtime before monitor entry",
     "synthetic_monitor_is_actual_qualcomm_firmware": false,
-    "handset_v9_execution_observed": false
+    "handset_v9_execution_observed": true,
+    "handset_native_irq_delivery_proven": false,
+    "handset_observation": "2026-10-28-native-gpu-v9-irq-blocked.json"
   },
   "not_established": [
     "fix for V8 secure-entry display loss or reported reboot",

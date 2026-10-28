@@ -30,6 +30,8 @@ struct FakeGic {
     unsigned invalidAccesses = 0;
     bool rejectEnable = false;
     bool rejectPriorityMask = false;
+    u32 priorityBits = 0xff;
+    u32 constantPriorityMask = 0x100;
 
     explicit FakeGic(View mode = View::Nonsecure, u8 target = 0x20) : view(mode)
     {
@@ -48,7 +50,11 @@ struct FakeGic {
             ++fake.invalidAccesses;
             return 0xffffffff;
         }
-        if (space == Space::Cpu) return fake.rejectPriorityMask && offset == 4 ? 0 : fake.cpu[offset / 4];
+        if (space == Space::Cpu) {
+            if (offset == 4 && fake.rejectPriorityMask) return 0;
+            if (offset == 4 && fake.constantPriorityMask <= 0xff) return fake.constantPriorityMask;
+            return fake.cpu[offset / 4];
+        }
         if (offset >= 0x80 && offset < 0x100 && fake.view != View::Secure) return 0;
         if (offset >= 0x400 && offset < 0x800 && fake.blocked != 0xffffffff) {
             u32 value = fake.dist[offset / 4];
@@ -67,7 +73,7 @@ struct FakeGic {
             return;
         }
         if (space == Space::Cpu) {
-            fake.cpu[offset / 4] = value;
+            fake.cpu[offset / 4] = offset == 4 ? value & fake.priorityBits : value;
             return;
         }
         if (offset >= 0x80 && offset < 0x100 && fake.view != View::Secure) return;
@@ -77,7 +83,8 @@ struct FakeGic {
         } else if (offset >= 0x180 && offset < 0x200) fake.dist[(offset - 0x80) / 4] &= ~value;
         else if (offset >= 0x280 && offset < 0x300) fake.dist[(offset - 0x80) / 4] &= ~value;
         else if (offset >= 0x380 && offset < 0x400) fake.dist[(offset - 0x80) / 4] &= ~value;
-        else fake.dist[offset / 4] = value;
+        else fake.dist[offset / 4] = offset >= 0x400 && offset < 0x800 ?
+            value & (fake.priorityBits * 0x01010101u) : value;
     }
 
     static void barrier(void *context)
@@ -222,6 +229,44 @@ void testRefusals()
     expect(unprepared.acknowledge() == 1023, "unprepared controller returns spurious token without MMIO");
     expect(!unprepared.sendSgi(1), "unprepared controller cannot send SGIs");
 }
+
+void testPriorityPrecision()
+{
+    for (u32 bits : {0xf0u, 0xf8u, 0xfcu, 0xfeu, 0xffu}) {
+        FakeGic fake;
+        fake.priorityBits = bits;
+        Controller controller;
+        prepared(fake, controller);
+        expect(controller.enableLocal(), "valid four-through-eight-bit priority mask enables");
+        expect(fake.cpu[1] == bits, "PMR retains only hardware-implemented priority bits");
+        expect(controller.priorityBits() == bits && controller.priorityMaskBits() == bits &&
+            controller.priorityMaskEnabled(), "priority precision is measured rather than assumed");
+        expect(controller.configureSpi(40, false, 0xa9), "SPI priority rounds to implemented bits");
+        expect(!controller.configureSpi(40, false, static_cast<u8>(bits)),
+            "a priority masked by implemented PMR precision is refused");
+    }
+    for (u32 bits : {0u, 0x80u, 0xe0u, 0xf4u, 0xfau}) {
+        FakeGic fake;
+        fake.priorityBits = bits;
+        Controller controller;
+        expect(controller.configure(fake.io(), 4096, 4096) && controller.prepareDistributor(),
+            "invalid priority precision fixture reaches local setup");
+        expect(!controller.prepareLocal() && !controller.enableLocal(),
+            "missing or noncontiguous priority precision cannot enable interrupts");
+    }
+    FakeGic frozen;
+    frozen.constantPriorityMask = 0xf0;
+    Controller frozenController;
+    expect(frozenController.configure(frozen.io(), 4096, 4096) && frozenController.prepareDistributor(),
+        "frozen PMR fixture reaches local setup");
+    expect(!frozenController.prepareLocal(), "plausible constant PMR must fail the writable-pattern proof");
+    const auto failure = frozenController.failure();
+    expect(failure.check == Check::Readback && failure.space == Space::Cpu && failure.offset == 4 &&
+        failure.expected == 0x50 && failure.observed == 0xf0 && failure.mask == 0xff,
+        "rejected register records its exact space, offset, expectation and observation");
+    frozenController.disableLocal();
+    expect(frozenController.failure().observed == 0xf0, "quiesce cannot erase the original failing readback");
+}
 }
 
 int main()
@@ -230,6 +275,7 @@ int main()
     testViews();
     testSpi();
     testRefusals();
+    testPriorityPrecision();
     std::printf("GicV2Core: %u checks, %u failures (simulated MMIO, not hardware)\n", checks, failures);
     return failures ? 1 : 0;
 }

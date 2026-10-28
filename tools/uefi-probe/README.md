@@ -289,6 +289,44 @@ No command DMA, shader frame, presentation FPS, touchscreen contact or iOS boot
 has been established for V9. Details are in
 `docs/hardware/2026-10-28-native-irq-runtime.json`.
 
+## Priority precision and exact GIC failures (v10)
+
+The V9 handset photo shows controller rejection (`IRQ RESULT=5`), zero delivered
+timer/SGI IRQs and no recorded abort. Its recovered report 17 verifies live GTDT
+GSI 20, flags 0 and the native MMIO mappings. This does not reveal which GIC
+register rejected configuration. No SCM callback was reached on this path.
+
+Investigation reproduced a genuine V9 bug: the fixed `PMR & 0xf8` check rejects
+a valid four-bit nonsecure priority view returning `0xf0`. The unchanged V9 ELF
+reproduces that rejection with QEMU's physical priority width set to five bits
+and security enabled. Arm's GICv2 specification permits that nonsecure view.
+This is a code/emulator finding, not yet proof that it is this phone's exact
+failing register.
+
+V10 measures distributor and CPU priority precision separately while local
+interrupt delivery is disabled. All-ones readback must be a contiguous mask of
+at least four implemented bits (five for a secure view), and alternating writes
+`0x50`/`0xa0` plus the final all-ones write must read back correctly. SGI/timer
+priority checks and live PMR checks use the measured precision. A zero,
+noncontiguous or plausible-but-read-only mask is still rejected; this does not
+bypass secure ownership. SPI priorities that would be masked by PMR are refused.
+
+The failure screen now dedicates space to `GIC ERROR`, `CHECK KIND`, register
+space/offset, expected value, observed value and comparison mask. Space 0 is the
+distributor, 1 the CPU interface; check 1 is exact masked readback, check 2 is
+unsupported priority precision (`EXPECTED/MIN` is the required minimum mask).
+It also shows measured masks, inherited post-exit GIC state, bounded read-only
+GIC snapshots, IRQ counters and monitor-entry count. Snapshot state can already
+be quiesced by failure handling; the original failed readback is retained
+separately. No IAR is read merely for diagnostics and no SMMU access is added.
+
+The actual GIC and EFI-vector QEMU tests now run with physical priority widths
+5/6/7/8 in secure-off, secure-on and blocked-PMR configurations: 24 cases, still
+requiring asynchronous IRQ delivery and refusing inaccessible secure priorities.
+The bare-metal test build uses strict alignment like the real EFI build.
+Hardware output and touchscreen/iOS acceptance criteria remain unchanged.
+See `docs/hardware/2026-10-28-native-gpu-v9-irq-blocked.json`.
+
 ## On the phone
 
 Use the already-installed Lumia950XLPkg ARM64 UEFI. The Windows Phone Developer Menu is
