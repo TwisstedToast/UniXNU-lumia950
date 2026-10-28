@@ -437,7 +437,7 @@ static EFI_STATUS Run(EFI_HANDLE image, EFI_SYSTEM_TABLE *systemTable)
     nativeGpuMode = ProbeGpuMode::Cancelled;
     nativeGpuCheckpoint = 0;
     nativeInterruptContext = nullptr;
-    Print("LUMIA 950 | NATIVE GPU POWER v10\r\n");
+    Print("LUMIA 950 | NATIVE GPU POWER v11\r\n");
     Print("Post-EBS PMI8994 supply, dedicated clock, GPU power and hardware setup.\r\n");
     Print("No Windows. No shared-bus RPM changes. No DMA, rendered frame or iOS claim.\r\n");
 #else
@@ -467,6 +467,7 @@ static EFI_STATUS Run(EFI_HANDLE image, EFI_SYSTEM_TABLE *systemTable)
     Print("Secure mode requires native GICv2, two real timer IRQs and a self-SGI first.\r\n");
     Print("SMC descriptor IDs and negotiated wire convention are unchanged from v8.\r\n");
     Print("GIC priority precision is measured; valid four-bit nonsecure views are supported.\r\n");
+    Print("GICC_IIDR must identify v2; a zero distributor PIDR2 alone never qualifies the GIC.\r\n");
 #endif
     preflightStage = "CPU_CONTEXT";
     UINT64 currentEl, control, affinity, identity;

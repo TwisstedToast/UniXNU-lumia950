@@ -327,6 +327,35 @@ The bare-metal test build uses strict alignment like the real EFI build.
 Hardware output and touchscreen/iOS acceptance criteria remain unchanged.
 See `docs/hardware/2026-10-28-native-gpu-v9-irq-blocked.json`.
 
+## Common CPU-interface identification (v11)
+
+V10's handset screen identifies the exact failure: GIC error 3
+(`WrongArchitecture`), distributor offset `0xfe8`, expected `0x20` under mask
+`0xf0`, observed zero. It stopped before priority calibration, timer/SGI proof
+or any monitor entry. Other distributor registers return nonzero values; why
+PIDR2 itself reads zero remains unknown. The priority-width correction is a
+separately reproduced bug, not the cause established by this photo.
+
+V11 requires the architected common CPU-interface `GICC_IIDR` at offset `0xfc`
+to identify GICv2 through bits [19:16]. A nonzero distributor PIDR2 must agree;
+only an exactly zero PIDR2 may be absent when that positive CPU ID is present.
+GICv1/v3/unknown CPU IDs, two absent IDs and nonzero conflicting distributor IDs
+are refused before any GIC write. ACPI topology, readable priorities or TYPER
+alone never qualify the controller. This replaces the PIDR2-only assumption,
+not the architecture or ownership gate. Arm IHI 0048B section 4.4.14 describes
+the common ID register; the handset's actual CPU IIDR has not yet been observed.
+
+The failure screen includes CPU/distributor IIDRs and `ID SOURCE`: 0=unknown,
+1=positive CPU IIDR with zero PIDR2, 2=matching CPU/distributor architecture IDs.
+All writable-pattern, ownership, real-IRQ and SCM-entry checks remain in place.
+Host tests reproduce the old rejection and refuse conflicting identities. The
+48 QEMU cases comprise 24 normal cases and 24 that emulate only the zero PIDR2
+read in the test I/O adapter, while using QEMU's actual common CPU ID and
+asynchronous interrupts. The production adapter has no test-ID substitution.
+These tests are neither Qualcomm firmware nor a handset success claim.
+See `docs/hardware/2026-10-28-native-gpu-v10-pidr2-rejection.json` for the photo,
+matching installed-stage/readback hashes and the V11 qualification contract.
+
 ## On the phone
 
 Use the already-installed Lumia950XLPkg ARM64 UEFI. The Windows Phone Developer Menu is

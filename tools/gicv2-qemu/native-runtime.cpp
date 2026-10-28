@@ -65,6 +65,9 @@ u32 read(void *, Space space, u32 offset)
     u32 value = 0xffffffff;
     const u64 base = space == Space::Distributor ? 0x08000000ull : 0x08010000ull;
     if (!NativeGuardedRead(base + offset, &value)) fail("GIC read guard");
+#ifdef GIC_TEST_ZERO_PIDR2
+    if (space == Space::Distributor && offset == 0xfe8) return 0;
+#endif
     return value;
 }
 
@@ -149,6 +152,15 @@ extern "C" [[noreturn]] void gic_test_main()
     }
     if (result != RuntimeResult::Ok || !runtime.ready() || runtime.timerInterrupts() < 2 ||
         runtime.sgiInterrupts() != 1 || nestedGuards < 3) fail("native asynchronous proof");
+#ifdef GIC_TEST_ZERO_PIDR2
+    if (runtime.controller().identity() != Identity::CpuInterface || runtime.controller().distributorPeripheralId() != 0) {
+        fail("zero PIDR2 common CPU identity");
+    }
+    print("EMULATED ZERO PIDR2 - COMMON CPU IIDR VERIFIED\n");
+#else
+    if (runtime.controller().identity() != Identity::CpuAndDistributor) fail("matching architecture identities");
+    print("COMMON CPU AND DISTRIBUTOR ID VERIFIED\n");
+#endif
     volatile u32 storage = 0x418;
     u32 readback = 0;
     if (!NativeGuardedRead(reinterpret_cast<u64>(&storage), &readback) || readback != 0x418 ||

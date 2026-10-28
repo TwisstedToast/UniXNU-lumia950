@@ -375,6 +375,23 @@ results, not yet handset IRQ delivery, GPU DMA or rendering. The secure-call ABI
 resource policy, GTDT route and GPU-only mode are unchanged. Evidence is in
 `hardware/2026-10-28-native-gpu-v9-irq-blocked.json`.
 
+### Actual V10 identification stop and V11
+
+The detailed V10 handset screen establishes an earlier stop than priority
+calibration: distributor PIDR2 at `0xfe8` returned zero, triggering architecture
+error 3 before native IRQ or SCM entry. Nonzero TYPER, priority and target reads
+do not by themselves prove architecture, and the cause of the zero ID is unknown.
+
+V11 positively checks the common CPU-interface `GICC_IIDR` architecture field
+for v2 before any GIC write; a nonzero distributor ID must also agree. Zero
+PIDR2 is not treated as v2 without that independent positive ID. Conflicting,
+v1/v3 and missing CPU IDs remain blocked. The raw IDs and identity source are
+visible on failure. The 48-case QEMU matrix includes emulated zero-PIDR2 reads
+with actual CPU ID reads and IRQ delivery, not a fabricated successful handset
+identity. The common CPU ID and V11 IRQ result still need a physical run.
+See `hardware/2026-10-28-native-gpu-v10-pidr2-rejection.json` for the actual
+photo/registers, original V10 stage verification and evidence boundaries.
+
 ## Source-only XNU entry
 
 The previously merged 56 MB kernel is explicitly runtime/ABI/relocation-unqualified.

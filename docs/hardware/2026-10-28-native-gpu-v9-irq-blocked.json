@@ -69,7 +69,8 @@
     "nonsecure_four_bit_priority_view_included": true,
     "secure_owned_zero_pmr_still_refused_before_monitor_entry": true,
     "constant_plausible_pmr_and_invalid_priority_masks_still_refused": true,
-    "new_handset_result_observed": false
+    "new_handset_result_observed": true,
+    "handset_result": "2026-10-28-native-gpu-v10-pidr2-rejection.json"
   },
   "primary_reference": "https://support.arm.com/documentation/ihi0048/b/Interrupt-Handling-and-Prioritization/Interrupt-grouping-and-interrupt-prioritization",
   "not_established": ["handset IRQ delivery", "handset secure call success", "GPU DMA or shader frame", "60 FPS", "physical touch", "iOS boot"]

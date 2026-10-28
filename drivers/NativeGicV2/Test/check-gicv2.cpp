@@ -41,6 +41,7 @@ struct FakeGic {
         for (u32 offset = 0x80; offset < 0x100; offset += 4) dist[offset / 4] = 0xffffffffu;
         cpu[0] = 0x600;
         cpu[0xc / 4] = 1023;
+        cpu[0xfc / 4] = 0x0202143b;
     }
 
     static u32 read(void *context, Space space, u32 offset)
@@ -97,7 +98,7 @@ struct FakeGic {
 
 void prepared(FakeGic &fake, Controller &controller)
 {
-    expect(controller.configure(fake.io(), 4096, 4096), "GICv2 windows and PIDR2 configure");
+    expect(controller.configure(fake.io(), 4096, 4096), "GICv2 windows and common CPU identity configure");
     expect(controller.prepareDistributor(), "distributor prepares");
     expect(controller.prepareLocal(), "banked SGI and PPI registers prepare");
 }
@@ -267,6 +268,54 @@ void testPriorityPrecision()
     frozenController.disableLocal();
     expect(frozenController.failure().observed == 0xf0, "quiesce cannot erase the original failing readback");
 }
+
+void testCommonIdentity()
+{
+    FakeGic absentPeripheralId;
+    absentPeripheralId.dist[0xfe8 / 4] = 0;
+    Controller controller;
+    expect(controller.configure(absentPeripheralId.io(), 4096, 4096),
+        "common CPU IIDR positively identifies v2 when distributor PIDR2 reads zero");
+    expect(absentPeripheralId.writes.empty(), "common identification uses read-only registers");
+    expect(controller.identity() == Identity::CpuInterface && controller.cpuInterfaceId() == 0x0202143b &&
+        controller.distributorPeripheralId() == 0, "identity source and raw common ID are retained");
+    expect(controller.prepareDistributor() && controller.prepareLocal() && controller.enableLocal(),
+        "a positively identified CPU interface still needs full writable GIC setup");
+    for (u32 identity : {0u, 0xffffffffu, 0x0201143bu, 0x0203143bu}) {
+        FakeGic incompatible;
+        incompatible.cpu[0xfc / 4] = identity;
+        Controller rejected;
+        expect(!rejected.configure(incompatible.io(), 4096, 4096),
+            "non-v2 CPU interface cannot be accepted by a distributor-only identity");
+        expect(incompatible.writes.empty(), "invalid CPU architecture is rejected before writes");
+        const auto failure = rejected.failure();
+        expect(rejected.error() == Error::WrongArchitecture && failure.space == Space::Cpu &&
+            failure.offset == 0xfc && failure.expected == 0x20000 && failure.observed == identity &&
+            failure.mask == 0xf0000 && rejected.identity() == Identity::Unknown,
+            "CPU architecture rejection retains exact IIDR readback and remains unqualified");
+    }
+    for (u32 peripheral : {1u, 0x10u, 0x30u, 0x40u, 0xffffffffu}) {
+        FakeGic incompatible;
+        incompatible.dist[0xfe8 / 4] = peripheral;
+        Controller rejected;
+        expect(!rejected.configure(incompatible.io(), 4096, 4096) && incompatible.writes.empty(),
+            "positive CPU ID cannot override a nonzero conflicting or invalid distributor ID");
+        const auto failure = rejected.failure();
+        expect(rejected.error() == Error::WrongArchitecture && failure.space == Space::Distributor &&
+            failure.offset == 0xfe8 && failure.observed == peripheral,
+            "conflicting distributor architecture is observable");
+    }
+    FakeGic identified;
+    Controller both;
+    expect(both.configure(identified.io(), 4096, 4096) && both.identity() == Identity::CpuAndDistributor,
+        "matching CPU and distributor architecture IDs qualify together");
+    FakeGic unknown;
+    unknown.dist[0xfe8 / 4] = 0;
+    unknown.cpu[0xfc / 4] = 0;
+    Controller rejected;
+    expect(!rejected.configure(unknown.io(), 4096, 4096) && unknown.writes.empty(),
+        "two missing IDs never qualify by ACPI topology or nonzero TYPER alone");
+}
 }
 
 int main()
@@ -276,6 +325,7 @@ int main()
     testSpi();
     testRefusals();
     testPriorityPrecision();
+    testCommonIdentity();
     std::printf("GicV2Core: %u checks, %u failures (simulated MMIO, not hardware)\n", checks, failures);
     return failures ? 1 : 0;
 }

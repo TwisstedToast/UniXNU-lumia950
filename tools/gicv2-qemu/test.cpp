@@ -69,6 +69,9 @@ u32 read(void *, Space space, u32 offset)
     asm volatile("dsb sy" ::: "memory");
     const u32 value = *reinterpret_cast<volatile u32 *>(base + offset);
     asm volatile("dsb sy" ::: "memory");
+#ifdef GIC_TEST_ZERO_PIDR2
+    if (space == Space::Distributor && offset == 0xfe8) return 0;
+#endif
     return value;
 }
 
@@ -136,6 +139,15 @@ extern "C" [[noreturn]] void gic_test_main()
     interruptController = &controller;
     const RegisterIo registers = {nullptr, read, write, barrier};
     if (!controller.configure(registers, 0x1000, 0x1000)) fail("configure");
+#ifdef GIC_TEST_ZERO_PIDR2
+    if (controller.identity() != Identity::CpuInterface || controller.distributorPeripheralId() != 0) {
+        fail("zero PIDR2 common CPU identity");
+    }
+    print("EMULATED ZERO PIDR2 - COMMON CPU IIDR VERIFIED\n");
+#else
+    if (controller.identity() != Identity::CpuAndDistributor) fail("matching architecture identities");
+    print("COMMON CPU AND DISTRIBUTOR ID VERIFIED\n");
+#endif
     if (!controller.prepareDistributor()) {
         print("CORE ERROR=");
         hex(static_cast<u32>(controller.error()));

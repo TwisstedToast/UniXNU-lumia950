@@ -19,11 +19,15 @@ def main():
     blocked_image = args.image.with_name("gicv2-test-blocked-pmr.elf")
     if not blocked_image.is_file():
         parser.error("build-gicv2-test.sh must also produce the blocked-PMR negative test")
-    configurations = [(secure, blocked, bits) for bits in (5, 6, 7, 8)
+    configurations = [(secure, blocked, bits, missing) for missing in (False, True) for bits in (5, 6, 7, 8)
                       for secure, blocked in ((False, False), (True, False), (True, True))]
-    for secure, blocked, bits in configurations:
+    for secure, blocked, bits, missing in configurations:
         name = ("secure-on" if secure else "secure-off") + ("-blocked-pmr" if blocked else "") + f"-priority{bits}"
-        image = blocked_image if blocked else args.image
+        name += "-zero-pidr2" if missing else ""
+        image = args.image.with_name("gicv2-test" + ("-zero-pidr2" if missing else "") +
+                                     ("-blocked-pmr" if blocked else "") + ".elf")
+        if not image.is_file():
+            parser.error("build-gicv2-test.sh must produce both normal and zero-PIDR2 identity tests")
         command = [args.qemu, "-M", "virt,gic-version=2,virtualization=on,secure=" + ("on" if secure else "off"),
                    "-global", f"arm_gic.num-priority-bits={bits}",
                    "-cpu", "cortex-a53", "-accel", "tcg", "-m", "128M", "-smp", "2",
@@ -46,13 +50,17 @@ def main():
         expected.append(b"SECURITY EXTENSIONS ON" if secure else b"SECURITY EXTENSIONS OFF")
         if secure:
             expected.append(b"SECURE SPI REFUSED")
+        expected.append(b"EMULATED ZERO PIDR2 - COMMON CPU IIDR VERIFIED" if missing else
+                        b"COMMON CPU AND DISTRIBUTOR ID VERIFIED")
         if result.returncode or b"FAIL" in result.stdout or not all(marker in result.stdout for marker in expected):
             sys.stdout.buffer.write(result.stdout)
             raise SystemExit(f"{name}: IRQ validation failed ({result.returncode})")
         print(f"{name}: asynchronous virtual timer, SGI, SPI, rearm and EOIR passed")
-    for secure, blocked, bits in configurations:
+    for secure, blocked, bits, missing in configurations:
         name = "native-runtime-" + ("secure-on" if secure else "secure-off") + ("-blocked-pmr" if blocked else "") + f"-priority{bits}"
-        image = args.image.with_name("native-runtime-" + ("blocked-pmr" if blocked else "normal") + ".elf")
+        name += "-zero-pidr2" if missing else ""
+        image = args.image.with_name("native-runtime-" + ("zero-pidr2-" if missing else "") +
+                                     ("blocked-pmr" if blocked else "normal") + ".elf")
         if not image.is_file():
             parser.error("build-gicv2-test.sh must also produce the native runtime images")
         command = [args.qemu, "-M", "virt,gic-version=2,virtualization=on,secure=" + ("on" if secure else "off"),
@@ -75,6 +83,8 @@ def main():
         expected = [b"PASS NATIVE IRQ RUNTIME TIMER_REARM SGI NESTED_ABORT SCM_GUARD MMIO_GUARD ISR_ERROR_MASK"]
         expected.append(b"SYNTHETIC MONITOR UNSUPPORTED - EL2 FORWARDING TESTED - NOT HANDSET SCM" if secure else
                         b"NO EL3 - NATIVE SCM GUARD")
+        expected.append(b"EMULATED ZERO PIDR2 - COMMON CPU IIDR VERIFIED" if missing else
+                        b"COMMON CPU AND DISTRIBUTOR ID VERIFIED")
         if result.returncode or b"FAIL" in result.stdout or not all(marker in result.stdout for marker in expected):
             sys.stdout.buffer.write(result.stdout)
             raise SystemExit(f"{name}: native vector/runtime validation failed ({result.returncode})")

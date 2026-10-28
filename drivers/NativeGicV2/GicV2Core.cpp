@@ -47,7 +47,11 @@ bool Controller::fail(Error error)
 
 bool Controller::verify(Space space, u32 offset, u32 expected, u32 mask)
 {
-    const u32 observed = read(space, offset);
+    return verifyObserved(space, offset, expected, read(space, offset), mask);
+}
+
+bool Controller::verifyObserved(Space space, u32 offset, u32 expected, u32 observed, u32 mask)
+{
     if ((observed & mask) == expected) return true;
     fail(Error::RegisterRejected);
     registerFailure = {Check::Readback, space, offset, expected, observed, mask};
@@ -102,13 +106,21 @@ bool Controller::configure(const RegisterIo &registers, u32 distributorBytes, u3
     io = registers;
     distBytes = distributorBytes;
     interfaceBytes = cpuBytes;
-    if (!verify(kDist, 0xfe8, 0x20, 0xf0)) { lastError = Error::WrongArchitecture; return false; }
+    peripheralIdentity = read(kDist, 0xfe8);
+    interfaceIdentity = read(kCpu, 0xfc);
+    if (!verifyObserved(kCpu, 0xfc, 0x00020000, interfaceIdentity, 0x000f0000) ||
+        (peripheralIdentity && !verifyObserved(kDist, 0xfe8, 0x20, peripheralIdentity, 0xf0))) {
+        lastError = Error::WrongArchitecture;
+        return false;
+    }
     const u32 typer = read(kDist, 4);
     interrupts = ((typer & 31) + 1) * 32;
     securityExtensions = (typer & (1u << 10)) != 0;
     if (interrupts > 1020) interrupts = 1020;
     bound = true;
+    identitySource = peripheralIdentity ? Identity::CpuAndDistributor : Identity::CpuInterface;
     lastError = Error::None;
+    registerFailure = {};
     return true;
 }
 

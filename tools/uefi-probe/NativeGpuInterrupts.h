@@ -10,6 +10,8 @@ const NativeInterruptRegister nativeInterruptRegisters[] = {
     {gicv2::Space::Cpu, 0, "NOW CPU CTLR"},
     {gicv2::Space::Cpu, 4, "NOW CPU PMR"},
     {gicv2::Space::Distributor, 0xfe8, "DIST PIDR2"},
+    {gicv2::Space::Cpu, 0xfc, "CPU IIDR"},
+    {gicv2::Space::Distributor, 8, "DIST IIDR"},
     {gicv2::Space::Distributor, 4, "DIST TYPER"},
     {gicv2::Space::Distributor, 0x100, "LOCAL ENABLE"},
     {gicv2::Space::Distributor, 0x200, "LOCAL PENDING"},

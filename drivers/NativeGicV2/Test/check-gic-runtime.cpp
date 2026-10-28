@@ -43,6 +43,7 @@ struct FakeRuntime {
         distributor[4 / 4] = 31 | (1u << 10);
         for (u32 offset = 0x800; offset < 0x820; offset += 4) distributor[offset / 4] = 0x04040404;
         cpu[0] = 0x600;
+        cpu[0xfc / 4] = 0x0202143b;
     }
 
     static u32 read(void *opaque, Space space, u32 offset)
@@ -286,6 +287,23 @@ void testPriorityPrecision()
             "losing PMR access revokes qualification even with four-bit priorities");
     }
 }
+
+void testCommonIdentity()
+{
+    FakeRuntime fake;
+    fake.distributor[0xfe8 / 4] = 0;
+    Runtime runtime;
+    proof(fake, runtime);
+    expect(runtime.controller().identity() == Identity::CpuInterface && runtime.ready(),
+        "missing distributor peripheral ID still requires actual IRQ proof after common CPU identification");
+    FakeRuntime unknown;
+    unknown.distributor[0xfe8 / 4] = 0;
+    unknown.cpu[0xfc / 4] = 0;
+    Runtime rejected;
+    expect(rejected.begin(unknown.registers(), unknown.clock(), contract()) == RuntimeResult::ControllerRejected &&
+        !unknown.writes && !unknown.timerArms && !unknown.irq,
+        "missing common identity cannot authorize any GIC write, timer arm or SCM entry");
+}
 }
 
 int main()
@@ -297,6 +315,7 @@ int main()
     testLumiaTimer();
     testLiveController();
     testPriorityPrecision();
+    testCommonIdentity();
     std::printf("GicRuntimeCore: %u checks, %u failures (simulated IRQ delivery, not hardware)\n", checks, failures);
     return failures ? 1 : 0;
 }

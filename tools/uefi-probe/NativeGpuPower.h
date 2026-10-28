@@ -100,7 +100,7 @@ void NativeGpuProgress(const ProbeFramebuffer &framebuffer, const char *stage, u
     ++nativeGpuCheckpoint;
     const u32 color = ProbeFramebufferColor(framebuffer.pixel_format, 60, 170, 255);
     ProbeFillRectangle(&framebuffer, 0, 0, framebuffer.width, 640, 0);
-    Line(framebuffer, 0, "GPU BRINGUP V10 - CPU STATUS ONLY", color);
+    Line(framebuffer, 0, "GPU BRINGUP V11 - CPU STATUS ONLY", color);
     Line(framebuffer, 1, ProbeGpuModeName(nativeGpuMode), color);
     Line(framebuffer, 2, stage, color);
     Number(framebuffer, 3, "TRACE STEP", nativeGpuCheckpoint, color);
@@ -173,7 +173,7 @@ bool NativeScmInvoke(void *opaque, secure::MonitorRegisters *values)
     const u32 color = ProbeFramebufferColor(framebuffer.pixel_format, 255, 100, 60);
     ProbeFillRectangle(&framebuffer, 0, 0, framebuffer.width, framebuffer.height, 0);
     Line(framebuffer, 0, "GPU INITIALIZED - NATIVE IRQ BLOCKED", color);
-    Line(framebuffer, 1, "V10 - NO WINDOWS OR UEFI SERVICES", color);
+    Line(framebuffer, 1, "V11 - NO WINDOWS OR UEFI SERVICES", color);
     Line(framebuffer, 2, nativeGpuStage, color);
     Number(framebuffer, 3, "IRQ RESULT", static_cast<u32>(context.result), color);
     Number(framebuffer, 4, "GIC ERROR", static_cast<u32>(controller.error()), color);
@@ -185,13 +185,14 @@ bool NativeScmInvoke(void *opaque, secure::MonitorRegisters *values)
     Number(framebuffer, 10, "COMPARE MASK", failure.mask, color);
     Number(framebuffer, 11, "DIST PRI MASK", controller.priorityBits(), color);
     Number(framebuffer, 12, "CPU PRI MASK", controller.priorityMaskBits(), color);
-    Number(framebuffer, 13, "EBS DIST CTLR", context.inheritedDistributor, color);
-    Number(framebuffer, 14, "EBS CPU CTLR", context.inheritedCpu, color);
-    Number(framebuffer, 15, "EBS CPU PMR", context.inheritedPriorityMask, color);
+    Number(framebuffer, 13, "ID SOURCE", static_cast<u32>(controller.identity()), color);
+    Number(framebuffer, 14, "EBS DIST CTLR", context.inheritedDistributor, color);
+    Number(framebuffer, 15, "EBS CPU CTLR", context.inheritedCpu, color);
+    Number(framebuffer, 16, "EBS CPU PMR", context.inheritedPriorityMask, color);
     for (u32 index = 0; index < nativeInterruptRegisterCount; ++index) {
-        Number(framebuffer, 16 + index, nativeInterruptRegisters[index].label, context.snapshot[index], color);
+        Number(framebuffer, 17 + index, nativeInterruptRegisters[index].label, context.snapshot[index], color);
     }
-    const u32 tail = 16 + nativeInterruptRegisterCount;
+    const u32 tail = 17 + nativeInterruptRegisterCount;
     Number(framebuffer, tail, "TIMER IRQ", context.runtime.timerInterrupts(), color);
     Number(framebuffer, tail + 1, "SELF SGI IRQ", context.runtime.sgiInterrupts(), color);
     Number(framebuffer, tail + 2, "UNEXPECTED IRQ", context.runtime.unexpectedInterrupts(), color);

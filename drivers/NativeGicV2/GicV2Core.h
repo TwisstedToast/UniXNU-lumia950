@@ -20,6 +20,7 @@ struct RegisterIo {
 };
 
 enum class Check : u8 { None, Readback, PriorityPrecision };
+enum class Identity : u8 { Unknown, CpuInterface, CpuAndDistributor };
 struct RegisterFailure {
     Check check = Check::None;
     Space space = Space::Distributor;
@@ -54,6 +55,9 @@ public:
     u32 priorityBits() const { return interruptPriorityBits; }
     u32 priorityMaskBits() const { return cpuPriorityBits; }
     bool priorityMaskEnabled() const;
+    Identity identity() const { return identitySource; }
+    u32 cpuInterfaceId() const { return interfaceIdentity; }
+    u32 distributorPeripheralId() const { return peripheralIdentity; }
 
 private:
     bool fail(Error error);
@@ -61,6 +65,7 @@ private:
     bool priority(u32 id, u8 value);
     bool probePriority(Space space, u32 offset, u32 shift, u32 &bits);
     bool verify(Space space, u32 offset, u32 expected, u32 mask = 0xffffffffu);
+    bool verifyObserved(Space space, u32 offset, u32 expected, u32 observed, u32 mask);
     void write(Space space, u32 offset, u32 value);
     RegisterIo io = {};
     u32 distBytes = 0;
@@ -69,6 +74,9 @@ private:
     u32 localInterruptMask = 0;
     u32 interruptPriorityBits = 0;
     u32 cpuPriorityBits = 0;
+    u32 interfaceIdentity = 0;
+    u32 peripheralIdentity = 0;
+    Identity identitySource = Identity::Unknown;
     RegisterFailure registerFailure;
     u8 target = 0;
     bool secure = false;
